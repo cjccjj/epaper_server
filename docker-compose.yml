@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    container_name: epaper_server
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./bitmaps:/app/bitmaps
+      - ./data:/app/data
+    restart: always
+
+volumes:
+  bitmaps:
+  data:

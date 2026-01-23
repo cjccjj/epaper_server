@@ -1,0 +1,12 @@
+__pycache__/
+venv/
+.env
+bitmaps/*.bmp
+bitmaps/*.jpg
+bitmaps/*.png
+data/epaper.db
+docs/
+test_device.py
+test_processor.py
+*.pyc
+.DS_Store

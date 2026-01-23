@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Paper Admin</title>
+    <style>
+        :root { 
+            --primary: #3b82f6; 
+            --bg: #0f172a; 
+            --panel: #1e293b; 
+            --panel-light: #334155;
+            --text: #f1f5f9; 
+            --text-dim: #94a3b8;
+            --border: #334155;
+            --input-bg: #0f172a;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 12px; background: var(--bg); color: var(--text); font-size: 13px; }
+        
+        /* Layout */
+        .admin-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; background: var(--panel); padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); }
+        .admin-header h2 { margin: 0; font-size: 1.1rem; color: var(--primary); margin-right: 12px; }
+        
+        .main-layout { display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
+        
+        /* Sidebar (Dishes) */
+        .sidebar { background: var(--panel); border-radius: 6px; border: 1px solid var(--border); padding: 8px; }
+        .dish-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; color: var(--text-dim); transition: 0.2s; display: flex; align-items: center; gap: 8px; }
+        .dish-item:hover { background: var(--panel-light); color: var(--text); }
+        .dish-item.active { background: var(--primary); color: white; }
+        .dish-item i { font-size: 14px; }
+
+        select, input { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+        
+        /* Content Area */
+        .content-area { display: flex; flex-direction: column; gap: 12px; }
+
+        /* Device Info & Gallery */
+        .device-info { background: var(--panel); padding: 10px; border-radius: 6px; border: 1px solid var(--border); }
+        .device-header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+        .device-header h3 { margin: 0; font-size: 0.95rem; }
+        .refresh-rate-box { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+        .refresh-rate-box input { width: 50px; text-align: center; }
+
+        .device-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+        
+        .gallery { display: flex; flex-wrap: wrap; gap: 6px; }
+        .image-item { position: relative; width: 200px; height: 150px; background: #000; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; }
+        .image-item img { width: 100%; height: 100%; object-fit: cover; }
+        .image-item .delete-btn { position: absolute; top: 0; right: 0; background: rgba(239, 68, 68, 0.9); color: white; border: none; padding: 0 3px; font-size: 9px; cursor: pointer; }
+        
+        /* Panels */
+        .dish-panel { background: var(--panel); padding: 10px; border-radius: 6px; border: 1px solid var(--border); }
+        .dish-panel h3 { margin: 0 0 10px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        
+        /* Reddit Panel Specific */
+        .reddit-config { display: flex; flex-direction: column; gap: 10px; max-width: 400px; }
+        .config-group { display: flex; align-items: center; gap: 10px; }
+        .config-group label { width: 80px; color: var(--text-dim); }
+        .config-group select, .config-group input { flex: 1; }
+        
+        .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+        .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); }
+        .reddit-post img { width: 100%; height: 150px; object-fit: cover; background: #000; }
+        .reddit-post .post-title { padding: 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+        /* Gallery Pipeline */
+        .controls-top { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+        .control-row { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .control-group { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px; }
+        .control-group label { white-space: nowrap; font-weight: 500; min-width: 60px; }
+        .control-group input[type="range"] { flex: 1; height: 4px; }
+        .control-group .val { min-width: 25px; text-align: right; color: var(--primary); font-weight: bold; }
+
+        .size-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; }
+        .size-inputs { display: flex; align-items: center; gap: 4px; }
+        .size-inputs input { width: 45px; }
+        
+        .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+        .preview-box { display: flex; flex-direction: column; gap: 4px; }
+        .preview-box h4 { margin: 0; font-size: 11px; color: var(--text-dim); }
+        canvas { display: block; border: 1px solid var(--border); background: #333; max-width: 100%; height: auto; image-rendering: pixelated; }
+
+        .btn-add { background: var(--primary); color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
+        .btn-add:hover { background: #2563eb; }
+        .btn-save { background: #10b981; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin-top: 8px; align-self: flex-start; }
+        .btn-save:hover { background: #059669; }
+        
+        .btn-fetch { background: #6366f1; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin-top: 8px; }
+        .btn-fetch:hover { background: #4f46e5; }
+        .btn-fetch:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .config-actions { display: flex; gap: 10px; }
+        
+        .stats { font-size: 10px; color: var(--text-dim); margin-left: auto; }
+        .hidden { display: none !important; }
+
+        /* Dish Selector Row */
+        .dish-selector-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .dish-selector-row label { font-size: 12px; color: var(--text-dim); font-weight: bold; }
+        .dish-toggle-group { display: flex; gap: 4px; background: var(--input-bg); padding: 3px; border-radius: 6px; border: 1px solid var(--border); }
+        .dish-btn { background: transparent; border: none; color: var(--text-dim); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; }
+        .dish-btn:hover { color: var(--text); background: var(--panel-light); }
+        .dish-btn.active { background: var(--primary); color: white; font-weight: bold; }
+
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; cursor: pointer; }
+        #overlay img { max-width: 98%; max-height: 98%; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-header">
+        <h2>E-Paper Admin</h2>
+        <div class="device-selector">
+            <select id="deviceSelect"><option value="">-- Select Device --</option></select>
+        </div>
+    </div>
+
+    <div id="deviceView" class="hidden">
+        <div class="content-area">
+            <div class="device-info">
+                <div class="device-header">
+                    <h3 id="deviceName">Device</h3>
+                    <div class="refresh-rate-box">
+                        <label>Refresh Rate:</label>
+                        <input type="number" id="refreshRate" value="60" min="10">
+                        <span>s</span>
+                    </div>
+                </div>
+                <div class="device-meta" id="deviceMeta"></div>
+                
+                <!-- Dish Selector (Moved here) -->
+                <div class="dish-selector-row">
+                    <label>Active Dish:</label>
+                    <div class="dish-toggle-group">
+                        <button class="dish-btn" data-dish="gallery" onclick="switchDish('gallery')">🖼️ Gallery</button>
+                        <button class="dish-btn" data-dish="reddit" onclick="switchDish('reddit')">Reddit Top</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gallery Dish Panel -->
+            <div id="panel-gallery" class="dish-panel dish-content hidden">
+                <h3>Gallery Manager</h3>
+                <div class="gallery" id="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;"></div>
+                <div class="controls-top">
+                    <div class="size-row">
+                        <input type="file" id="upload" accept="image/*" style="width: 180px;">
+                        <div class="size-inputs">
+                            <input type="number" id="targetW" value="400"> <span>x</span>
+                            <input type="number" id="targetH" value="300">
+                        </div>
+                        <button id="addBtn" class="btn-add">Add to Gallery</button>
+                        <div class="stats" id="stats"></div>
+                    </div>
+                    
+                    <div class="control-row">
+                        <div class="control-group">
+                            <label>Contrast</label>
+                            <input type="range" id="clip" min="0" max="100" value="18">
+                            <span class="val"><span id="clipValue">18</span>%</span>
+                        </div>
+                        <div class="control-group">
+                            <label>Layers</label>
+                            <input type="range" id="layers" min="0" max="8" step="1" value="5">
+                            <span class="val" id="layersValue">32</span>
+                        </div>
+                        <div class="control-group">
+                            <label>Strength</label>
+                            <input type="range" id="strength" min="0" max="1" step="0.05" value="0">
+                            <span class="val" id="strengthValue">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="previews-container">
+                    <div class="preview-box">
+                        <h4>Original</h4>
+                        <canvas id="cOriginal"></canvas>
+                    </div>
+                    <div class="preview-box">
+                        <h4>Dithered</h4>
+                        <canvas id="cDither"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reddit Dish Panel -->
+            <div id="panel-reddit" class="dish-panel dish-content hidden">
+                <h3>Reddit Top Config</h3>
+                <div class="reddit-config">
+                    <div class="config-group">
+                        <label>Subreddit</label>
+                        <input type="text" id="redditSub" placeholder="e.g. aww">
+                    </div>
+                    <div class="config-group">
+                        <label>Sort</label>
+                        <select id="redditSort">
+                            <option value="top">Top</option>
+                            <option value="hot">Hot</option>
+                            <option value="new">New</option>
+                        </select>
+                    </div>
+                    <div class="config-group">
+                        <label>Time</label>
+                        <select id="redditTime">
+                            <option value="day">Day</option>
+                            <option value="week">Week</option>
+                            <option value="month">Month</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
+                    <div class="config-actions">
+                        <button class="btn-save" onclick="saveRedditConfig()">Save Config</button>
+                        <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()">⚡ Save Config and Fetch Now</button>
+                    </div>
+                </div>
+                <div id="redditPreview" class="reddit-preview-list">
+                    <!-- Top 10 posts will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="overlay" onclick="this.style.display='none'"><img id="overlayImg"></div>
+
+    <script>
+        let currentMac = localStorage.getItem('lastSelectedMac') || '';
+        let devices = [];
+        let img = new Image();
+        let activeDish = 'gallery';
+        
+        const dom = {
+            select: document.getElementById('deviceSelect'),
+            view: document.getElementById('deviceView'),
+            name: document.getElementById('deviceName'),
+            meta: document.getElementById('deviceMeta'),
+            gallery: document.getElementById('gallery'),
+            refresh: document.getElementById('refreshRate'),
+            upload: document.getElementById('upload'),
+            targetW: document.getElementById('targetW'),
+            targetH: document.getElementById('targetH'),
+            clip: document.getElementById('clip'),
+            layers: document.getElementById('layers'),
+            strength: document.getElementById('strength'),
+            stats: document.getElementById('stats'),
+            cOri: document.getElementById('cOriginal'),
+            cDit: document.getElementById('cDither'),
+            addBtn: document.getElementById('addBtn'),
+            overlay: document.getElementById('overlay'),
+            overlayImg: document.getElementById('overlayImg'),
+            redditSub: document.getElementById('redditSub'),
+            redditSort: document.getElementById('redditSort'),
+            redditTime: document.getElementById('redditTime'),
+            redditPreview: document.getElementById('redditPreview'),
+            fetchNowBtn: document.getElementById('fetchNowBtn')
+        };
+        const gOri = dom.cOri.getContext('2d');
+        const gDit = dom.cDit.getContext('2d');
+
+        async function init() {
+            await fetchDevices();
+            
+            // Initial placeholders
+            process();
+
+            dom.select.addEventListener('change', (e) => {
+                currentMac = e.target.value;
+                localStorage.setItem('lastSelectedMac', currentMac);
+                updateUI();
+            });
+
+            dom.refresh.addEventListener('change', async () => {
+                const val = parseInt(dom.refresh.value);
+                const d = devices.find(x => x.mac_address === currentMac);
+                if (d) d.refresh_rate = val;
+                saveSettings({refresh_rate: val});
+            });
+
+            [dom.clip, dom.layers, dom.strength].forEach(i => {
+                i.addEventListener('input', () => {
+                    let displayVal = i.value;
+                    if (i.id === 'layers') {
+                        const layersMap = [0, 2, 4, 8, 16, 32, 64, 128, 256];
+                        displayVal = layersMap[i.value];
+                    }
+                    document.getElementById(i.id+'Value').textContent = displayVal;
+                    process();
+                });
+            });
+
+            [dom.targetW, dom.targetH].forEach(i => i.addEventListener('change', process));
+
+            dom.upload.addEventListener('change', e => {
+                const f = e.target.files[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = ev => {
+                    img.onload = () => { process(); };
+                    img.src = ev.target.result;
+                };
+                r.readAsDataURL(f);
+            });
+
+            dom.addBtn.addEventListener('click', upload);
+        }
+
+        async function saveSettings(settings) {
+            if (!currentMac) return;
+            await fetch(`/admin/device/${currentMac}/settings`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(settings)
+            });
+        }
+
+        async function switchDish(dish) {
+            console.log('Switching to dish:', dish);
+            activeDish = dish;
+            const d = devices.find(x => x.mac_address === currentMac);
+            if (d) d.active_dish = dish; // Update local state immediately
+            updateUI(); // Update UI immediately
+            await saveSettings({active_dish: dish});
+        }
+
+        async function fetchRedditNow() {
+            dom.fetchNowBtn.disabled = true;
+            dom.fetchNowBtn.textContent = '⏳ Saving & Fetching...';
+            
+            try {
+                // 1. Save Config first
+                await saveRedditConfig(false);
+                
+                // 2. Trigger fetch with current config
+                const config = {
+                    subreddit: dom.redditSub.value,
+                    sort: dom.redditSort.value,
+                    time: dom.redditTime.value
+                };
+
+                const res = await fetch('/admin/reddit/fetch_now', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                if (res.ok) {
+                    // Since it's a background task on the server, we wait a few seconds before refreshing the preview
+                    setTimeout(async () => {
+                        await loadRedditPreview();
+                        dom.fetchNowBtn.disabled = false;
+                        dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                        alert('Config saved and fetch triggered! Images are being processed in the background.');
+                    }, 2000);
+                } else {
+                    alert('Failed to trigger fetch.');
+                    dom.fetchNowBtn.disabled = false;
+                    dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                }
+            } catch (e) {
+                alert('Error: ' + e);
+                dom.fetchNowBtn.disabled = false;
+                dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+            }
+        }
+
+        async function saveRedditConfig(showAlert = true) {
+            const config = {
+                subreddit: dom.redditSub.value,
+                sort: dom.redditSort.value,
+                time: dom.redditTime.value
+            };
+            const d = devices.find(x => x.mac_address === currentMac);
+            if (d) d.reddit_config = config;
+            await saveSettings({reddit_config: config});
+            await loadRedditPreview();
+            if (showAlert) alert('Reddit config saved!');
+        }
+
+        async function loadRedditPreview() {
+            if (!currentMac) return;
+            // dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px;">Loading top posts...</div>';
+            try {
+                const res = await fetch(`/admin/reddit/preview/${currentMac}`);
+                const data = await res.json();
+                
+                if (data.posts && data.posts.length > 0) {
+                    dom.redditPreview.innerHTML = data.posts.map(post => `
+                        <div class="reddit-post" style="width: 120px; height: 90px;">
+                            <img src="/api/bitmap/${post.bmp_filename}?t=${Date.now()}" 
+                                 alt="" 
+                                 onclick="showOverlay('/api/bitmap/${post.bmp_filename}')" 
+                                 style="cursor: pointer; width: 100%; height: 100%; object-fit: contain; background: #000;">
+                        </div>
+                    `).join('');
+                } else {
+                    dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
+                }
+            } catch (e) {
+                dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #ef4444;">Failed to load Reddit preview.</div>';
+            }
+        }
+
+        function showOverlay(src) {
+            dom.overlayImg.src = src;
+            dom.overlay.style.display = 'flex';
+        }
+
+        async function fetchDevices() {
+            const res = await fetch('/admin/devices');
+            devices = await res.json();
+            dom.select.innerHTML = '<option value="">-- Select Device --</option>';
+            devices.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.mac_address;
+                opt.textContent = `${d.friendly_id} (${d.mac_address})`;
+                dom.select.appendChild(opt);
+            });
+            
+            if (currentMac) {
+                dom.select.value = currentMac;
+                if (!dom.select.value && devices.length > 0) {
+                    currentMac = devices[0].mac_address;
+                    dom.select.value = currentMac;
+                }
+            } else if (devices.length > 0) {
+                currentMac = devices[0].mac_address;
+                dom.select.value = currentMac;
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            const d = devices.find(x => x.mac_address === currentMac);
+            if (!d) { dom.view.classList.add('hidden'); return; }
+            
+            dom.view.classList.remove('hidden');
+            dom.name.textContent = d.friendly_id;
+            dom.refresh.value = d.refresh_rate || 60;
+            activeDish = d.active_dish || 'gallery';
+
+            dom.meta.innerHTML = `
+                <span>Bat: ${d.battery_voltage || '?'}V</span>
+                <span>RSSI: ${d.rssi || '?'}</span>
+                <span>Last: ${d.last_update_time ? new Date(d.last_update_time).toLocaleTimeString() : 'Never'}</span>
+            `;
+            
+            // Gallery thumbnails are now only in the Gallery panel
+            dom.gallery.innerHTML = d.images.map(i => `
+                <div class="image-item" onclick="showFull('/api/bitmap/${i.filename}')">
+                    <img src="/api/bitmap/${i.filename}">
+                    <button class="delete-btn" onclick="event.stopPropagation(); deleteImg(${i.id})">×</button>
+                </div>
+            `).join('');
+
+            // Update Dish Selection (Updated for button group)
+            document.querySelectorAll('.dish-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.dish === activeDish);
+            });
+
+            // Show relevant panel
+            document.querySelectorAll('.dish-content').forEach(panel => {
+                panel.classList.toggle('hidden', panel.id !== `panel-${activeDish}`);
+            });
+
+            if (activeDish === 'reddit') {
+                loadRedditPreview();
+            }
+
+            // Update Reddit Config inputs
+            if (d.reddit_config) {
+                dom.redditSub.value = d.reddit_config.subreddit || 'pics';
+                dom.redditSort.value = d.reddit_config.sort || 'top';
+                dom.redditTime.value = d.reddit_config.time || 'day';
+            }
+        }
+
+        function showFull(url) {
+            dom.overlayImg.src = url;
+            dom.overlay.style.display = 'flex';
+        }
+
+        async function deleteImg(id) {
+            if (confirm('Delete?')) {
+                await fetch(`/admin/image/${id}`, {method: 'DELETE'});
+                await fetchDevices();
+            }
+        }
+
+        function process() {
+            const tw = parseInt(dom.targetW.value), th = parseInt(dom.targetH.value);
+            dom.cOri.width = dom.cDit.width = tw;
+            dom.cOri.height = dom.cDit.height = th;
+
+            if (!img.src) {
+                // Draw grey placeholders
+                gOri.fillStyle = gDit.fillStyle = '#444';
+                gOri.fillRect(0, 0, tw, th);
+                gDit.fillRect(0, 0, tw, th);
+                gOri.fillStyle = gDit.fillStyle = '#666';
+                gOri.font = '20px sans-serif';
+                gOri.textAlign = gDit.textAlign = 'center';
+                gOri.fillText('No Image', tw/2, th/2);
+                gDit.fillText('No Image', tw/2, th/2);
+                return;
+            }
+
+            const sAsp = img.width / img.height, tAsp = tw / th;
+            let sx, sy, sw, sh;
+            if (sAsp > tAsp) { sh = img.height; sw = img.height * tAsp; sx = (img.width - sw) / 2; sy = 0; }
+            else { sw = img.width; sh = img.width / tAsp; sx = 0; sy = (img.height - sh) / 2; }
+
+            gOri.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th);
+            let idata = gOri.getImageData(0, 0, tw, th);
+            for (let i = 0; i < idata.data.length; i += 4) {
+                const g = 0.299*idata.data[i] + 0.587*idata.data[i+1] + 0.114*idata.data[i+2];
+                idata.data[i] = idata.data[i+1] = idata.data[i+2] = g;
+            }
+            gOri.putImageData(idata, 0, 0);
+
+            let acData = new ImageData(new Uint8ClampedArray(idata.data), tw, th);
+            const acStats = applyAC(acData.data, tw, th);
+            let tpData = new ImageData(new Uint8ClampedArray(acData.data), tw, th);
+            
+            const layersMap = [0, 2, 4, 8, 16, 32, 64, 128, 256];
+            const layersVal = layersMap[dom.layers.value];
+            
+            const tpStats = applyTP(tpData.data, tw, th, layersVal, Number(dom.strength.value));
+            applyFS(tpData.data, tw, th);
+            for (let i = 0; i < tpData.data.length; i += 4) tpData.data[i+1] = tpData.data[i+2] = tpData.data[i];
+            gDit.putImageData(tpData, 0, 0);
+            dom.stats.innerHTML = `Clip: ${((acStats.ct)/(tw*th)*100).toFixed(1)}% | Str: ${tpStats.avg.toFixed(3)}`;
+        }
+
+        function clamp(v) { return Math.max(0, Math.min(255, v)); }
+        function applyAC(d, w, h) {
+            const hist = new Array(256).fill(0);
+            for (let i = 0; i < d.length; i += 4) hist[d[i] | 0]++;
+            const total = w * h, target = total * (dom.clip.value / 100), minT = total * 0.005;
+            let l = 0, r = 255, cb = 0, cw = 0, ct = 0, rb = total, rw = total;
+            while (l < r && ct < target) {
+                if (rw >= rb) { cw += hist[r]; rw -= hist[r]; ct += hist[r]; r--; }
+                else { cb += hist[l]; rb -= hist[l]; ct += hist[l]; l++; }
+            }
+            while (l < r && cb < minT) { cb += hist[l]; ct += hist[l]; l++; }
+            while (l < r && cw < minT) { cw += hist[r]; ct += hist[r]; r--; }
+            const sc = 255 / (r - l || 1);
+            for (let i = 0; i < d.length; i += 4) {
+                let v = d[i];
+                if (v <= l) v = 0; else if (v >= r) v = 255; else v = (v - l) * sc;
+                d[i] = d[i+1] = d[i+2] = clamp(v);
+            }
+            return { ct };
+        }
+        function applyTP(d, w, h, layers, userStr) {
+            const vals = [];
+            for (let i = 0; i < d.length; i += 4) { if (d[i] > 0 && d[i] < 255) vals.push(d[i]); }
+            if (!vals.length || layers <= 1) return { avg: 0 };
+            vals.sort((a, b) => a - b);
+            const thres = [];
+            for (let i = 1; i < layers; i++) thres.push(vals[Math.floor(vals.length * i / layers)]);
+            const step = 253 / (layers - 1);
+            let sum = 0, cnt = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                const v = d[i]; if (v === 0 || v === 255) continue;
+                let idx = thres.findIndex(t => v < t);
+                if (idx === -1) idx = layers - 1;
+                const target = 1 + idx * step;
+                const str = (0.2 + 0.8 * (Math.abs(v - 128) / 128)) * userStr;
+                d[i] = d[i+1] = d[i+2] = clamp(v + str * (target - v));
+                sum += str; cnt++;
+            }
+            return { avg: sum / cnt };
+        }
+        function applyFS(d, w, h) {
+            for (let y = 0; y < h; y++) {
+                const ltr = y % 2 === 0;
+                for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
+                    const i = (y * w + x) * 4, old = d[i], nw = old < 128 ? 0 : 255, err = old - nw;
+                    d[i] = nw;
+                    const add = (nx, ny, f) => {
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                            const j = (ny * w + nx) * 4;
+                            d[j] = clamp(d[j] + err * f);
+                        }
+                    };
+                    if (ltr) { add(x + 1, y, 7/16); add(x - 1, y + 1, 3/16); add(x, y + 1, 5/16); add(x + 1, y + 1, 1/16); }
+                    else { add(x - 1, y, 7/16); add(x + 1, y + 1, 3/16); add(x, y + 1, 5/16); add(x - 1, y + 1, 1/16); }
+                }
+            }
+        }
+
+        async function upload(e) {
+            if (e) e.preventDefault();
+            if (!img.src) { alert('Please select an image first'); return; }
+            dom.addBtn.disabled = true;
+            dom.addBtn.textContent = '...';
+            dom.cDit.toBlob(async (blob) => {
+                const fd = new FormData();
+                fd.append('file', blob, 'processed.png');
+                try {
+                    const res = await fetch(`/admin/upload/${currentMac}`, { method: 'POST', body: fd });
+                    if (res.ok) { 
+                        dom.upload.value = ''; 
+                        img = new Image(); // Clear image
+                        process(); // Reset preview
+                        await fetchDevices(); 
+                    }
+                } catch (e) { alert('Failed'); }
+                finally { dom.addBtn.disabled = false; dom.addBtn.textContent = 'Add to Gallery'; }
+            }, 'image/png');
+        }
+
+        init();
+    </script>
+</body>
+</html>

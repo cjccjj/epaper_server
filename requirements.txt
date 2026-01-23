@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+feedparser
+requests
+httpx
+Pillow
+numpy
