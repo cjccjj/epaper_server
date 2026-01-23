@@ -506,11 +506,21 @@
             }
 
             const sAsp = img.width / img.height, tAsp = tw / th;
-            let sx, sy, sw, sh;
-            if (sAsp > tAsp) { sh = img.height; sw = img.height * tAsp; sx = (img.width - sw) / 2; sy = 0; }
-            else { sw = img.width; sh = img.width / tAsp; sx = 0; sy = (img.height - sh) / 2; }
+            let drawW, drawH, dx, dy;
+            
+            // Calculate scale to fit
+            const scale = Math.min(tw / img.width, th / img.height);
+            drawW = img.width * scale;
+            drawH = img.height * scale;
+            dx = (tw - drawW) / 2;
+            dy = (th - drawH) / 2;
 
-            gOri.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th);
+            // Fill with WHITE background first
+            gOri.fillStyle = "white";
+            gOri.fillRect(0, 0, tw, th);
+            
+            // Draw resized image centered
+            gOri.drawImage(img, 0, 0, img.width, img.height, dx, dy, drawW, drawH);
             let idata = gOri.getImageData(0, 0, tw, th);
             for (let i = 0; i < idata.data.length; i += 4) {
                 const g = 0.299*idata.data[i] + 0.587*idata.data[i+1] + 0.114*idata.data[i+2];

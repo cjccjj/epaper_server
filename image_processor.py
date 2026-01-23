@@ -35,7 +35,7 @@ def center_crop_resize(img, target_size=(400, 300)):
     return img
 
 def fit_resize(img, target_size=(400, 300)):
-    """Resize image to fit within target_size while preserving aspect ratio, padding with black."""
+    """Resize image to fit within target_size while preserving aspect ratio, padding with white."""
     tw, th = target_size
     iw, ih = img.size
     
@@ -47,7 +47,7 @@ def fit_resize(img, target_size=(400, 300)):
     img = img.resize((nw, nh), Image.Resampling.LANCZOS)
     
     # Create black background (epaper displays black/white, so RGB black is fine before grayscale conversion)
-    new_img = Image.new("RGB", target_size, (0, 0, 0))
+    new_img = Image.new("RGB", target_size, (255, 255, 255))
     
     # Paste resized image in center
     offset = ((tw - nw) // 2, (th - nh) // 2)

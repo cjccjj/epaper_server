@@ -310,8 +310,28 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
     filename = f"{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(BITMAP_DIR, filename)
 
-    with open(file_path, "wb") as buffer:
+    # Save as temporary PNG first
+    temp_path = file_path + ".png"
+    with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    try:
+        # Convert to 1-bit BMP using Pillow to ensure 0=black, 1=white
+        from PIL import Image
+        with Image.open(temp_path) as img:
+            # The canvas upload is already dithered (0,0,0 and 255,255,255)
+            # convert("1") will map 0 to 0 and 255 to 1
+            bmp_path = os.path.splitext(file_path)[0] + ".bmp"
+            img.convert("1").save(bmp_path, "BMP")
+            filename = os.path.basename(bmp_path)
+        
+        # Clean up temp file
+        os.remove(temp_path)
+    except Exception as e:
+        print(f"Error converting upload to BMP: {e}")
+        # Fallback to the original file if conversion fails
+        filename = os.path.basename(file_path)
+        os.rename(temp_path, file_path)
 
     new_img = database.DeviceImage(
         mac_address=mac,
