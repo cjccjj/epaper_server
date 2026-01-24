@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean, Integer, JSON, ForeignKey
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Boolean, Integer, JSON, ForeignKey, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import datetime
@@ -62,5 +62,18 @@ class DeviceLog(Base):
     metadata_json = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+def run_migrations():
+    """Run simple migrations to update schema if needed."""
+    inspector = inspect(engine)
+    if "devices" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("devices")]
+        if "timezone" not in columns:
+            print("Migration: Adding 'timezone' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN timezone TEXT DEFAULT 'UTC'"))
+                conn.commit()
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    run_migrations()
+
