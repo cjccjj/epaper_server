@@ -40,7 +40,7 @@ reddit_global_cache = {
     "posts": [], 
     "last_update": None, 
     "config": {"subreddit": "memes"},
-    "rate_hours": 8
+    "rate_hours": 3
 }
 
 # Initialize scheduler
@@ -223,15 +223,18 @@ async def scheduled_reddit_update():
     print("ERROR: All Reddit fetch attempts failed. Waiting for next scheduled run.")
 
 async def refresh_global_reddit_cache(subreddit="memes"):
-    """Fetches images from Reddit using a mixed strategy (uprising, day, week, month, year)."""
+    """Fetches images from Reddit using a revised strategy (Recent & Old Good)."""
     print(f"DEBUG: refresh_global_reddit_cache called with subreddit={subreddit}")
     
+    # Strategy Definition
+    # 1. Recent: top_day (8) and rising (8). Reuse if in cache.
+    # 2. Old Good: top_week (4), top_month (3), top_year (2). Skip if in cache to rotate.
     strategies = [
-        {"sort": "rising", "time": "all", "limit": 6, "label": "uprising"},
-        {"sort": "top", "time": "day", "limit": 5, "label": "top_today"},
-        {"sort": "top", "time": "week", "limit": 3, "label": "top_week"},
-        {"sort": "top", "time": "month", "limit": 3, "label": "top_month"},
-        {"sort": "top", "time": "year", "limit": 3, "label": "top_year"}
+        {"sort": "top", "time": "day", "limit": 8, "label": "top_day", "type": "recent"},
+        {"sort": "rising", "time": "all", "limit": 8, "label": "uprising", "type": "recent"},
+        {"sort": "top", "time": "week", "limit": 4, "label": "top_week", "type": "old_good"},
+        {"sort": "top", "time": "month", "limit": 3, "label": "top_month", "type": "old_good"},
+        {"sort": "top", "time": "year", "limit": 2, "label": "top_year", "type": "old_good"}
     ]
     
     all_posts = []
@@ -241,7 +244,6 @@ async def refresh_global_reddit_cache(subreddit="memes"):
     existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "id" in p}
     
     # We'll use a local counter for filenames to avoid collisions
-    # Start counter after existing reddit files if any
     reddit_files = [f for f in os.listdir(BITMAP_DIR) if f.startswith("reddit_") and f.endswith(".bmp")]
     if reddit_files:
         try:
@@ -257,47 +259,58 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                 sort = strategy["sort"]
                 time = strategy["time"]
                 target_count = strategy["limit"]
+                label = strategy["label"]
+                s_type = strategy["type"]
                 
                 url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
-                print(f"DEBUG: Fetching strategy {strategy['label']} from: {url}")
+                print(f"DEBUG: Fetching strategy {label} from: {url}")
                 
                 response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
                 if response.status_code != 200:
-                    print(f"ERROR: Failed to fetch strategy {strategy['label']}: {response.status_code}")
+                    print(f"ERROR: Failed to fetch strategy {label}: {response.status_code}")
                     continue
                 
                 feed = feedparser.parse(response.content)
-                print(f"DEBUG: Strategy {strategy['label']} found {len(feed.entries)} entries")
+                print(f"DEBUG: Strategy {label} found {len(feed.entries)} entries")
                 
                 strategy_posts_added = 0
-                for entry in feed.entries:
+                # Process up to 25 items from each list
+                for i, entry in enumerate(feed.entries[:25]):
                     if strategy_posts_added >= target_count:
                         break
                     
                     post_id = entry.get("id")
-                    if post_id in seen_ids:
+                    if not post_id or post_id in seen_ids:
                         continue
                     
-                    # Try to reuse existing post if available and bitmap exists
-                    if post_id in existing_posts:
+                    is_in_cache = post_id in existing_posts
+                    
+                    # For "old_good" type, we want to replace/rotate, so skip if already in cache
+                    if s_type == "old_good" and is_in_cache:
+                        print(f"  SKIPPING [{label}]: Post {post_id} already in cache (Old Good rotation)")
+                        continue
+                    
+                    # For "recent" type, reuse if available
+                    if s_type == "recent" and is_in_cache:
                         existing = existing_posts[post_id]
                         if os.path.exists(os.path.join(BITMAP_DIR, existing["bmp_filename"])):
                             all_posts.append(existing)
                             seen_ids.add(post_id)
                             strategy_posts_added += 1
-                            print(f"  REUSED [{strategy['label']}]: Post {post_id}")
+                            print(f"  REUSED [{label}]: Post {post_id}")
                             continue
 
+                    # Otherwise, try to fetch and process image
                     content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
                     img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
                     if img_matches:
                         img_url = img_matches[0].replace("&amp;", "&")
                         
-                        # Process image
                         filename = f"reddit_{filename_counter}.bmp"
                         filepath = os.path.join(BITMAP_DIR, filename)
                         
                         try:
+                            # Test image processing
                             await asyncio.to_thread(
                                 image_processor.process_image_url, 
                                 img_url, filepath,
@@ -310,19 +323,15 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                                 "url": entry.link,
                                 "img_url": img_url,
                                 "bmp_filename": filename,
-                                "strategy": strategy['label']
+                                "strategy": label
                             })
                             
                             seen_ids.add(post_id)
                             strategy_posts_added += 1
                             filename_counter += 1
-                            
-                            print(f"  SUCCESS [{strategy['label']}]: Added post {len(all_posts)}")
-                        except ValueError as ve:
-                            print(f"  SKIPPED: {ve}")
-                            continue
-                        except Exception as img_err:
-                            print(f"  ERROR: Failed to process image: {img_err}")
+                            print(f"  SUCCESS [{label}]: Added post {len(all_posts)}")
+                        except Exception as e:
+                            print(f"  SKIPPED [{label}]: Image processing failed: {e}")
                             continue
                             
             if not all_posts:
@@ -347,7 +356,7 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                 except Exception as e:
                     print(f"ERROR: Failed to remove orphan {orphan}: {e}")
 
-            print(f"Reddit global cache updated: {len(all_posts)} posts dithered using mixed strategy")
+            print(f"Reddit global cache updated: {len(all_posts)} posts dithered using revised strategy")
         
     except Exception as e:
         print(f"Failed to refresh global Reddit cache: {e}")
@@ -548,10 +557,21 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
 @app.get("/admin/reddit/preview/{mac}")
 def reddit_preview(mac: str, db: Session = Depends(get_db)):
     # Return the global cache. The mac is kept for future per-device customization if needed.
+    # Include server local time and timezone for UI
+    now = datetime.datetime.now()
+    # Get server local timezone name
+    try:
+        import time
+        server_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
+    except:
+        server_tz = "Local"
+
     return {
         "posts": reddit_global_cache["posts"],
         "last_update": reddit_global_cache["last_update"].isoformat() if reddit_global_cache["last_update"] else None,
-        "rate_hours": reddit_global_cache["rate_hours"]
+        "rate_hours": reddit_global_cache["rate_hours"],
+        "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "server_tz": server_tz
     }
 
 @app.post("/admin/reddit/fetch_now")

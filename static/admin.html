@@ -433,26 +433,22 @@
 
         async function loadRedditPreview() {
             if (!currentMac) return;
-            // dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px;">Loading top posts...</div>';
             try {
                 const res = await fetch(`/admin/reddit/preview/${currentMac}`);
                 const data = await res.json();
                 
                 // Update status info
                 if (data.last_update) {
-                    const d = devices.find(x => x.mac_address === currentMac);
-                    const timeStr = data.last_update.endsWith('Z') ? data.last_update : data.last_update + 'Z';
-                    const date = new Date(timeStr);
-                    document.getElementById('lastFetchTime').textContent = new Intl.DateTimeFormat('en-GB', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: false,
-                        timeZone: d.timezone || 'UTC'
-                    }).format(date).replace(/\//g, '-').replace(',', '');
+                    // Use server time and timezone provided by API
+                    const lastUpdateDate = new Date(data.last_update);
+                    const formattedDate = lastUpdateDate.getFullYear() + '-' + 
+                        String(lastUpdateDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                        String(lastUpdateDate.getDate()).padStart(2, '0') + ' ' + 
+                        String(lastUpdateDate.getHours()).padStart(2, '0') + ':' + 
+                        String(lastUpdateDate.getMinutes()).padStart(2, '0') + ':' + 
+                        String(lastUpdateDate.getSeconds()).padStart(2, '0');
+                    
+                    document.getElementById('lastFetchTime').textContent = `${formattedDate} (${data.server_tz})`;
                 }
                 if (data.rate_hours) {
                     document.getElementById('fetchRate').textContent = data.rate_hours;
@@ -471,7 +467,8 @@
                     dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
                 }
             } catch (e) {
-                dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #ef4444;">Failed to load Reddit preview.</div>';
+                // Silently fail if fetch is in progress or server is busy
+                console.log('Reddit preview load skipped or failed:', e);
             }
         }
 
