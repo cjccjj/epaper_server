@@ -34,6 +34,7 @@ class Device(Base):
     # Playlist tracking
     current_image_index = Column(Integer, default=0)
     refresh_rate = Column(Integer, default=60)
+    timezone = Column(String, default="UTC")
     active_dish = Column(String, default="gallery")
     reddit_config = Column(JSON, default=lambda: {"subreddit": "aww", "sort": "top", "time": "day"})
     

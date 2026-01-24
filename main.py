@@ -430,6 +430,7 @@ def list_devices(db: Session = Depends(get_db)):
             "battery_voltage": d.battery_voltage,
             "rssi": d.rssi,
             "refresh_rate": d.refresh_rate,
+            "timezone": d.timezone,
             "active_dish": d.active_dish,
             "reddit_config": d.reddit_config,
             "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
@@ -444,6 +445,8 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
     
     if "refresh_rate" in settings:
         device.refresh_rate = int(settings["refresh_rate"])
+    if "timezone" in settings:
+        device.timezone = settings["timezone"]
     if "active_dish" in settings:
         device.active_dish = settings["active_dish"]
     if "reddit_config" in settings:
