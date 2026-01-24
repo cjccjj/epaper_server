@@ -319,19 +319,16 @@ def get_display(
     if not device:
         raise HTTPException(status_code=401, detail="Device not found")
 
-    # Update device status
+    # Update device status (except last_update_time which we update only on successful response)
     device.battery_voltage = battery_voltage
     device.fw_version = fw_version
     device.rssi = rssi
-    device.last_update_time = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     
     # Use device's refresh_rate or fallback to provided header or default 60
     current_refresh_rate = refresh_rate if refresh_rate else device.refresh_rate
     if not current_refresh_rate:
         current_refresh_rate = 60
         
-    device.next_expected_update = device.last_update_time + datetime.timedelta(seconds=current_refresh_rate)
-
     # Logic to select content based on active dish
     filename = "placeholder.bmp" # Fallback
     
@@ -380,6 +377,11 @@ def get_display(
             device.current_image_index = idx
         else:
             filename = "placeholder.bmp" # Fallback if no reddit posts found
+    
+    # Update contact time only after successful image selection
+    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    device.last_update_time = now
+    device.next_expected_update = now + datetime.timedelta(seconds=current_refresh_rate)
     
     db.commit()
 

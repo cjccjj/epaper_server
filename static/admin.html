@@ -59,16 +59,16 @@
         .config-group label { width: 80px; color: var(--text-dim); }
         .config-group select, .config-group input { flex: 1; }
         
-        .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
-        .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); }
-        .reddit-post img { width: 100%; height: 180px; object-fit: cover; background: #000; }
+        .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, 200px); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; justify-content: flex-start; }
+        .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; }
+        .reddit-post img { width: 100%; height: 150px; object-fit: cover; background: #000; }
         .reddit-post .post-title { padding: 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 
         /* Gallery Pipeline */
         .controls-top { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-        .control-row { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
-        .control-group { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px; }
-        .control-group label { white-space: nowrap; font-weight: 500; min-width: 60px; }
+        .control-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+        .control-group { display: flex; align-items: center; gap: 6px; min-width: 300px; }
+        .control-group label { white-space: nowrap; font-weight: 500; min-width: 70px; }
         .control-group input[type="range"] { width: 200px; height: 4px; }
         .control-group .val { min-width: 25px; text-align: right; color: var(--primary); font-weight: bold; }
 
@@ -456,7 +456,7 @@
             dom.meta.innerHTML = `
                 <span>🔋 ${d.battery_voltage || '?'}V</span>
                 <span>📶 ${d.rssi || '?'} dBm</span>
-                <span title="Last time the device contacted the server">🕒 Device Last Contact: ${lastSeen}</span>
+                <span title="Last time the device successfully requested an image">🕒 Last Image Fetch: ${lastSeen}</span>
             `;
             
             // Gallery thumbnails are now only in the Gallery panel
