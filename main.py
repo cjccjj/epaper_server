@@ -67,11 +67,11 @@ async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
                 filepath = os.path.join(BITMAP_DIR, filename)
                 try:
                     # Run image processing in a thread to not block the event loop
-                    # Use 'fit' resize mode for Reddit images as requested
+                    # Use 'smart' resize mode for Reddit images as requested
                     await asyncio.to_thread(
                         image_processor.process_image_url, 
                         img_url, filepath,
-                        resize_mode='fit'
+                        resize_mode='smart'
                     )
                     posts.append({
                         "title": entry.title, 

@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import numpy as np
 import os
+import smartcrop
 
 def download_image(url):
     headers = {"User-Agent": "linux:epaper-server:v1.0.0 (by /u/cj)"}
@@ -54,6 +55,31 @@ def fit_resize(img, target_size=(400, 300)):
     new_img.paste(img, offset)
     
     return new_img
+
+def smart_crop_resize(img, target_size=(400, 300)):
+    """Use smartcrop.py to find the best crop for the target size."""
+    tw, th = target_size
+    
+    # SmartCrop works best with RGB
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+        
+    cropper = smartcrop.SmartCrop()
+    result = cropper.crop(img, width=tw, height=th)
+    
+    # Get the best crop coordinates
+    box = result['top_crop']
+    crop_box = (
+        box['x'], 
+        box['y'], 
+        box['x'] + box['width'], 
+        box['y'] + box['height']
+    )
+    
+    # Crop and resize
+    img = img.crop(crop_box)
+    img = img.resize((tw, th), Image.Resampling.LANCZOS)
+    return img
 
 def apply_ac(data, clip_pct=18):
     """Auto-Contrast logic ported from JS applyAC."""
@@ -177,6 +203,8 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=18, layers=32, stre
     # 1. Resize according to mode
     if resize_mode == 'fit':
         img = fit_resize(img, target_size)
+    elif resize_mode == 'smart':
+        img = smart_crop_resize(img, target_size)
     else:
         img = center_crop_resize(img, target_size)
     
