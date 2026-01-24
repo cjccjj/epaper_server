@@ -79,6 +79,8 @@ async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
                         "img_url": img_url, 
                         "bmp_filename": filename
                     })
+                    # Update global cache immediately so it's visible in preview and API
+                    reddit_global_cache["posts"] = posts
                     print(f"Added post {len(posts)}: {entry.title}")
                 except Exception as img_err:
                     print(f"Failed to process Reddit image {img_url}: {img_err}")
@@ -172,7 +174,7 @@ def get_display(
     device.battery_voltage = battery_voltage
     device.fw_version = fw_version
     device.rssi = rssi
-    device.last_update_time = datetime.datetime.utcnow()
+    device.last_update_time = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     
     # Use device's refresh_rate or fallback to provided header or default 60
     current_refresh_rate = refresh_rate if refresh_rate else device.refresh_rate
@@ -187,25 +189,23 @@ def get_display(
     if device.active_dish == "gallery":
         images = sorted(device.images, key=lambda x: x.order)
         if images:
-            if device.current_image_index >= len(images):
-                device.current_image_index = 0
-            
-            current_img = images[device.current_image_index]
+            # Use a modulo to ensure index is within range if list shrunk
+            idx = device.current_image_index % len(images)
+            current_img = images[idx]
             filename = current_img.filename
             
             # Increment for next time
-            device.current_image_index = (device.current_image_index + 1) % len(images)
+            device.current_image_index = (idx + 1) % len(images)
     elif device.active_dish == "reddit":
         posts = reddit_global_cache.get("posts", [])
         if posts:
-            if device.current_image_index >= len(posts):
-                device.current_image_index = 0
-            
-            current_post = posts[device.current_image_index]
+            # Use a modulo to ensure index is within range if list shrunk
+            idx = device.current_image_index % len(posts)
+            current_post = posts[idx]
             filename = current_post["bmp_filename"]
             
             # Increment for next time
-            device.current_image_index = (device.current_image_index + 1) % len(posts)
+            device.current_image_index = (idx + 1) % len(posts)
         else:
             filename = "placeholder.bmp" # Fallback if no reddit posts found
     
