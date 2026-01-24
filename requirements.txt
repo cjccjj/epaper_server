@@ -7,5 +7,3 @@ requests
 httpx
 Pillow
 numpy
-smartcrop
-opencv-python-headless

@@ -3,7 +3,9 @@ from PIL import Image
 import io
 import numpy as np
 import os
-import smartcrop
+
+# Configuration for image processing
+STRETCH_THRESHOLD = 0.30  # If padding ratio is less than this, stretch image instead of padding
 
 def resize_if_large(img, max_dim=1024):
     """Resize image if any dimension exceeds max_dim, maintaining aspect ratio."""
@@ -24,82 +26,34 @@ def download_image(url):
     response.raise_for_status()
     return Image.open(io.BytesIO(response.content))
 
-def center_crop_resize(img, target_size=(400, 300)):
+def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD):
+    """
+    Resize image to fit within target_size. 
+    If the required padding is less than stretch_threshold, stretch the image instead.
+    Otherwise, pad with white.
+    """
     tw, th = target_size
     iw, ih = img.size
     
-    s_asp = iw / ih
-    t_asp = tw / th
-    
-    if s_asp > t_asp:
-        # Image is wider than target
-        sh = ih
-        sw = ih * t_asp
-        sx = (iw - sw) / 2
-        sy = 0
-    else:
-        # Image is taller than target
-        sw = iw
-        sh = iw / t_asp
-        sx = 0
-        sy = (ih - sh) / 2
-        
-    img = img.crop((sx, sy, sx + sw, sy + sh))
-    img = img.resize((tw, th), Image.Resampling.LANCZOS)
-    return img
-
-def fit_resize(img, target_size=(400, 300)):
-    """Resize image to fit within target_size while preserving aspect ratio, padding with white."""
-    tw, th = target_size
-    iw, ih = img.size
-    
-    # Calculate scale factor
+    # Calculate scale factor for fitting
     scale = min(tw / iw, th / ih)
     nw, nh = int(iw * scale), int(ih * scale)
     
-    # Resize image
-    img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+    # Calculate how much of the target area would be 'fill' (padding)
+    target_area = tw * th
+    fitted_area = nw * nh
+    fill_ratio = (target_area - fitted_area) / target_area
     
-    # Create black background (epaper displays black/white, so RGB black is fine before grayscale conversion)
-    new_img = Image.new("RGB", target_size, (255, 255, 255))
-    
-    # Paste resized image in center
-    offset = ((tw - nw) // 2, (th - nh) // 2)
-    new_img.paste(img, offset)
-    
-    return new_img
-
-def smart_crop_resize(img, target_size=(400, 300)):
-    """Use smartcrop.py to find the best crop."""
-    tw, th = target_size
-    
-    # Resize if too large to speed up processing
-    img = resize_if_large(img, 1024)
-    
-    # SmartCrop works best with RGB
-    if img.mode != 'RGB':
-        img = img.convert('RGB')
-        
-    cropper = smartcrop.SmartCrop()
-    
-    # Note: The 'smartcrop' library version installed doesn't support 'boost' parameter.
-    # However, smartcrop's internal algorithm already uses edge detection (G channel of analyse_image).
-    # By using SmartCrop on a 1024px max image, we get better accuracy than on the full res.
-    result = cropper.crop(img, width=tw, height=th)
-    
-    # Get the best crop coordinates
-    box = result['top_crop']
-    crop_box = (
-        box['x'], 
-        box['y'], 
-        box['x'] + box['width'], 
-        box['y'] + box['height']
-    )
-    
-    # Crop and resize
-    img = img.crop(crop_box)
-    img = img.resize((tw, th), Image.Resampling.LANCZOS)
-    return img
+    if fill_ratio <= stretch_threshold:
+        # If the gap is small, just stretch it to full target size
+        return img.resize(target_size, Image.Resampling.LANCZOS)
+    else:
+        # Otherwise, do the standard fit-with-white-padding
+        img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+        new_img = Image.new("RGB", target_size, (255, 255, 255))
+        offset = ((tw - nw) // 2, (th - nh) // 2)
+        new_img.paste(img, offset)
+        return new_img
 
 def apply_ac(data, clip_pct=18):
     """Auto-Contrast logic ported from JS applyAC."""
@@ -219,16 +173,11 @@ def apply_fs(data):
                 
     return out.astype(np.uint8)
 
-def process_and_dither(img, target_size=(400, 300), clip_pct=18, layers=32, strength=0.0, resize_mode='crop'):
-    # 1. Resize according to mode
-    if resize_mode == 'fit':
-        img = fit_resize(img, target_size)
-    elif resize_mode == 'smart':
-        img = smart_crop_resize(img, target_size)
-    else:
-        img = center_crop_resize(img, target_size)
+def process_and_dither(img, target_size=(400, 300), clip_pct=18, layers=32, strength=0.0, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
+    # Revert to only fit_resize as requested
+    img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
-    # 2. Convert to grayscale (L mode in Pillow uses the same coefficients as JS)
+    # 2. Convert to grayscale
     img = img.convert("L")
     data = np.array(img)
     
@@ -254,9 +203,9 @@ def save_as_bmp(img, path):
     # BMP format for epaper usually needs to be 1-bit or 8-bit
     img.save(path, format="BMP")
 
-def process_image_url(url, output_path, target_size=(400, 300), resize_mode='crop'):
+def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)
-    dithered = process_and_dither(img, target_size, resize_mode=resize_mode)
+    dithered = process_and_dither(img, target_size, resize_mode=resize_mode, stretch_threshold=stretch_threshold)
     save_as_bmp(dithered, output_path)
     return output_path
