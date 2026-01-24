@@ -453,7 +453,11 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
 @app.get("/admin/reddit/preview/{mac}")
 def reddit_preview(mac: str, db: Session = Depends(get_db)):
     # Return the global cache. The mac is kept for future per-device customization if needed.
-    return {"posts": reddit_global_cache["posts"]}
+    return {
+        "posts": reddit_global_cache["posts"],
+        "last_update": reddit_global_cache["last_update"].isoformat() if reddit_global_cache["last_update"] else None,
+        "rate_hours": reddit_global_cache["rate_hours"]
+    }
 
 @app.post("/admin/reddit/fetch_now")
 async def fetch_reddit_now(config: dict = Body(...), db: Session = Depends(get_db)):
