@@ -207,24 +207,7 @@
                 <div class="reddit-config">
                     <div class="config-group">
                         <label>Subreddit</label>
-                        <input type="text" id="redditSub" placeholder="e.g. aww">
-                    </div>
-                    <div class="config-group">
-                        <label>Sort</label>
-                        <select id="redditSort">
-                            <option value="top">Top</option>
-                            <option value="hot">Hot</option>
-                            <option value="new">New</option>
-                        </select>
-                    </div>
-                    <div class="config-group">
-                        <label>Time</label>
-                        <select id="redditTime">
-                            <option value="day">Day</option>
-                            <option value="week">Week</option>
-                            <option value="month">Month</option>
-                            <option value="all">All Time</option>
-                        </select>
+                        <input type="text" id="redditSub" placeholder="e.g. memes">
                     </div>
                     <div class="config-actions">
                         <button class="btn-save" onclick="saveRedditConfig()">Save Config</button>
@@ -267,8 +250,6 @@
             overlay: document.getElementById('overlay'),
             overlayImg: document.getElementById('overlayImg'),
             redditSub: document.getElementById('redditSub'),
-            redditSort: document.getElementById('redditSort'),
-            redditTime: document.getElementById('redditTime'),
             redditPreview: document.getElementById('redditPreview'),
             fetchNowBtn: document.getElementById('fetchNowBtn')
         };
@@ -356,9 +337,7 @@
                 
                 // 2. Trigger fetch with current config
                 const config = {
-                    subreddit: dom.redditSub.value,
-                    sort: dom.redditSort.value,
-                    time: dom.redditTime.value
+                    subreddit: dom.redditSub.value
                 };
 
                 const res = await fetch('/admin/reddit/fetch_now', { 
@@ -389,9 +368,7 @@
 
         async function saveRedditConfig(showAlert = true) {
             const config = {
-                subreddit: dom.redditSub.value,
-                sort: dom.redditSort.value,
-                time: dom.redditTime.value
+                subreddit: dom.redditSub.value
             };
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.reddit_config = config;
@@ -497,9 +474,7 @@
 
             // Update Reddit Config inputs
             if (d.reddit_config) {
-                dom.redditSub.value = d.reddit_config.subreddit || 'pics';
-                dom.redditSort.value = d.reddit_config.sort || 'top';
-                dom.redditTime.value = d.reddit_config.time || 'day';
+                dom.redditSub.value = d.reddit_config.subreddit || 'memes';
             }
         }
 

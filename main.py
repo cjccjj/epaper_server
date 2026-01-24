@@ -14,6 +14,7 @@ import httpx
 import re
 import asyncio
 import image_processor
+import random
 from typing import Optional, List
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -35,7 +36,7 @@ REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
 reddit_global_cache = {
     "posts": [], 
     "last_update": None, 
-    "config": {"subreddit": "memes", "sort": "top", "time": "day"},
+    "config": {"subreddit": "memes"},
     "rate_hours": 8
 }
 
@@ -116,9 +117,7 @@ async def scheduled_reddit_update():
         try:
             print(f"DEBUG: Scheduled Reddit fetch attempt {attempt + 1}")
             await refresh_global_reddit_cache(
-                subreddit=config.get("subreddit", "memes"),
-                sort=config.get("sort", "top"),
-                time=config.get("time", "day")
+                subreddit=config.get("subreddit", "memes")
             )
             print("DEBUG: Scheduled Reddit fetch successful")
             return
@@ -130,70 +129,133 @@ async def scheduled_reddit_update():
                 await asyncio.sleep(wait_time)
     print("ERROR: All Reddit fetch attempts failed. Waiting for next scheduled run.")
 
-async def refresh_global_reddit_cache(subreddit="memes", sort="top", time="day"):
-    """Fetches the top images from Reddit RSS and dithers them for the global cache."""
-    print(f"DEBUG: refresh_global_reddit_cache called with subreddit={subreddit}, sort={sort}, time={time}")
-    url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
-    print(f"DEBUG: Fetching RSS URL: {url}")
+async def refresh_global_reddit_cache(subreddit="memes"):
+    """Fetches images from Reddit using a mixed strategy (uprising, day, week, month, year)."""
+    print(f"DEBUG: refresh_global_reddit_cache called with subreddit={subreddit}")
+    
+    strategies = [
+        {"sort": "rising", "time": "all", "limit": 6, "label": "uprising"},
+        {"sort": "top", "time": "day", "limit": 5, "label": "top_today"},
+        {"sort": "top", "time": "week", "limit": 3, "label": "top_week"},
+        {"sort": "top", "time": "month", "limit": 3, "label": "top_month"},
+        {"sort": "top", "time": "year", "limit": 3, "label": "top_year"}
+    ]
+    
+    all_posts = []
+    seen_ids = set()
+    
+    # Map of existing posts for reuse: {id: post_dict}
+    existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", [])}
+    old_filenames = {p["bmp_filename"] for p in reddit_global_cache.get("posts", [])}
+    
+    # We'll use a local counter for filenames to avoid collisions
+    # Start counter after existing reddit files if any
+    reddit_files = [f for f in os.listdir(BITMAP_DIR) if f.startswith("reddit_") and f.endswith(".bmp")]
+    if reddit_files:
+        try:
+            filename_counter = max([int(f.split("_")[1].split(".")[0]) for f in reddit_files]) + 1
+        except:
+            filename_counter = len(reddit_files)
+    else:
+        filename_counter = 0
+
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
-            print(f"RSS response status: {response.status_code}")
-            if response.status_code != 200:
-                print(f"Error: Failed to fetch RSS: {response.text}")
-                return
-            content = response.content
-            
-        feed = feedparser.parse(content)
-        print(f"Found {len(feed.entries)} entries in RSS feed for r/{subreddit}")
-        posts = []
-        # Process up to all entries in the feed (usually 25) to find up to 10 good ones
-        for i, entry in enumerate(feed.entries):
-            if len(posts) >= 10: 
-                print("DEBUG: Reached target of 10 good images.")
-                break
-            
-            content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
-            img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
-            if img_matches:
-                img_url = img_matches[0].replace("&amp;", "&")
-                print(f"[{i+1}/{len(feed.entries)}] Attempting: {img_url}")
+            for strategy in strategies:
+                sort = strategy["sort"]
+                time = strategy["time"]
+                target_count = strategy["limit"]
                 
-                # Process image
-                filename = f"reddit_{len(posts)}.bmp"
-                filepath = os.path.join(BITMAP_DIR, filename)
-                try:
-                    # Run image processing in a thread to not block the event loop
-                    # Note: process_image_url will now raise ValueError if image requires padding > 30%
-                    await asyncio.to_thread(
-                        image_processor.process_image_url, 
-                        img_url, filepath,
-                        resize_mode='fit'
-                    )
-                    posts.append({
-                        "title": entry.title, 
-                        "url": entry.link, 
-                        "img_url": img_url, 
-                        "bmp_filename": filename
-                    })
-                    # Update global cache immediately so it's visible in preview and API
-                    reddit_global_cache["posts"] = posts
-                    save_reddit_cache()
-                    print(f"  SUCCESS: Added post {len(posts)}: {entry.title}")
-                except ValueError as ve:
-                    print(f"  SKIPPED: {ve}")
+                url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
+                print(f"DEBUG: Fetching strategy {strategy['label']} from: {url}")
+                
+                response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
+                if response.status_code != 200:
+                    print(f"ERROR: Failed to fetch strategy {strategy['label']}: {response.status_code}")
                     continue
-                except Exception as img_err:
-                    print(f"  ERROR: Failed to process image: {img_err}")
-                    continue
-            else:
-                print(f"[{i+1}/{len(feed.entries)}] No image found in post: {entry.title}")
+                
+                feed = feedparser.parse(response.content)
+                print(f"DEBUG: Strategy {strategy['label']} found {len(feed.entries)} entries")
+                
+                strategy_posts_added = 0
+                for entry in feed.entries:
+                    if strategy_posts_added >= target_count:
+                        break
+                    
+                    post_id = entry.get("id")
+                    if post_id in seen_ids:
+                        continue
+                    
+                    # Try to reuse existing post if available and bitmap exists
+                    if post_id in existing_posts:
+                        existing = existing_posts[post_id]
+                        if os.path.exists(os.path.join(BITMAP_DIR, existing["bmp_filename"])):
+                            all_posts.append(existing)
+                            seen_ids.add(post_id)
+                            strategy_posts_added += 1
+                            print(f"  REUSED [{strategy['label']}]: Post {post_id}")
+                            continue
 
-        reddit_global_cache["posts"] = posts
+                    content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
+                    img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
+                    if img_matches:
+                        img_url = img_matches[0].replace("&amp;", "&")
+                        
+                        # Process image
+                        filename = f"reddit_{filename_counter}.bmp"
+                        filepath = os.path.join(BITMAP_DIR, filename)
+                        
+                        try:
+                            await asyncio.to_thread(
+                                image_processor.process_image_url, 
+                                img_url, filepath,
+                                resize_mode='fit'
+                            )
+                            
+                            all_posts.append({
+                                "id": post_id,
+                                "title": entry.title,
+                                "url": entry.link,
+                                "img_url": img_url,
+                                "bmp_filename": filename,
+                                "strategy": strategy['label']
+                            })
+                            
+                            seen_ids.add(post_id)
+                            strategy_posts_added += 1
+                            filename_counter += 1
+                            
+                            # Incremental save
+                            reddit_global_cache["posts"] = all_posts
+                            save_reddit_cache()
+                            
+                            print(f"  SUCCESS [{strategy['label']}]: Added post {len(all_posts)}")
+                        except ValueError as ve:
+                            print(f"  SKIPPED: {ve}")
+                            continue
+                        except Exception as img_err:
+                            print(f"  ERROR: Failed to process image: {img_err}")
+                            continue
+                            
+        reddit_global_cache["posts"] = all_posts
         reddit_global_cache["last_update"] = datetime.datetime.now()
-        reddit_global_cache["config"] = {"subreddit": subreddit, "sort": sort, "time": time}
+        reddit_global_cache["config"] = {"subreddit": subreddit}
         save_reddit_cache()
-        print(f"Reddit global cache updated: {len(posts)} posts dithered")
+        
+        # Cleanup orphaned files: files that were in old cache but not in new cache
+        new_filenames = {p["bmp_filename"] for p in all_posts}
+        orphaned_files = old_filenames - new_filenames
+        for orphan in orphaned_files:
+            orphan_path = os.path.join(BITMAP_DIR, orphan)
+            if os.path.exists(orphan_path):
+                try:
+                    os.remove(orphan_path)
+                    print(f"DEBUG: Cleaned up orphaned reddit bitmap: {orphan}")
+                except Exception as e:
+                    print(f"ERROR: Failed to remove orphan {orphan}: {e}")
+
+        print(f"Reddit global cache updated: {len(all_posts)} posts dithered using mixed strategy")
+        
     except Exception as e:
         print(f"Failed to refresh global Reddit cache: {e}")
 
@@ -286,13 +348,36 @@ def get_display(
     elif device.active_dish == "reddit":
         posts = reddit_global_cache.get("posts", [])
         if posts:
-            # Use a modulo to ensure index is within range if list shrunk
-            idx = device.current_image_index % len(posts)
+            # Initialize or clean history
+            if not hasattr(device, '_reddit_history'):
+                device._reddit_history = []
+            
+            # Filter posts to avoid recent duplicates
+            available_indices = [i for i in range(len(posts)) if i not in device._reddit_history]
+            
+            # If all posts shown, reset history but keep the very last one to avoid immediate repeat
+            if not available_indices:
+                last_idx = device._reddit_history[-1] if device._reddit_history else -1
+                device._reddit_history = [last_idx] if last_idx != -1 else []
+                available_indices = [i for i in range(len(posts)) if i != last_idx]
+
+            # Select a random index from available ones
+            if available_indices:
+                idx = random.choice(available_indices)
+            else:
+                idx = 0 # Fallback
+                
             current_post = posts[idx]
             filename = current_post["bmp_filename"]
             
-            # Increment for next time
-            device.current_image_index = (idx + 1) % len(posts)
+            # Track history (keep last 50% of total posts to ensure variety)
+            device._reddit_history.append(idx)
+            max_history = max(1, len(posts) // 2)
+            if len(device._reddit_history) > max_history:
+                device._reddit_history.pop(0)
+            
+            # Still update current_image_index for compatibility/visibility
+            device.current_image_index = idx
         else:
             filename = "placeholder.bmp" # Fallback if no reddit posts found
     
@@ -371,24 +456,24 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
     return {"posts": reddit_global_cache["posts"]}
 
 @app.post("/admin/reddit/fetch_now")
-async def reddit_fetch_now(background_tasks: BackgroundTasks, config: dict = Body(...)):
-    """Triggers an immediate refresh of the global Reddit cache and updates scheduler."""
+async def fetch_reddit_now(config: dict = Body(...), db: Session = Depends(get_db)):
+    """Manually trigger a Reddit cache refresh."""
     subreddit = config.get("subreddit")
-    sort = config.get("sort")
-    time = config.get("time")
     
-    # Update global config
-    last_config = reddit_global_cache.get("config", {})
+    # Update cache config
     reddit_global_cache["config"] = {
-        "subreddit": subreddit or last_config.get("subreddit", "memes"),
-        "sort": sort or last_config.get("sort", "top"),
-        "time": time or last_config.get("time", "day")
+        "subreddit": subreddit or reddit_global_cache["config"].get("subreddit", "memes")
     }
     save_reddit_cache()
 
     print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']}")
-    background_tasks.add_task(scheduled_reddit_update)
-    return {"status": "success", "message": f"Fetch started for r/{reddit_global_cache['config']['subreddit']}"}
+    
+    # Start the fetch in the background
+    asyncio.create_task(refresh_global_reddit_cache(
+        subreddit=reddit_global_cache["config"]["subreddit"]
+    ))
+    
+    return {"status": "fetch_started"}
 
 @app.post("/admin/upload/{mac}")
 async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
