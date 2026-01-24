@@ -54,24 +54,28 @@ async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
         feed = feedparser.parse(content)
         print(f"Found {len(feed.entries)} entries in RSS feed for r/{subreddit}")
         posts = []
+        # Process up to all entries in the feed (usually 25) to find up to 10 good ones
         for i, entry in enumerate(feed.entries):
-            if len(posts) >= 10: break
+            if len(posts) >= 10: 
+                print("DEBUG: Reached target of 10 good images.")
+                break
+            
             content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
             img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
             if img_matches:
                 img_url = img_matches[0].replace("&amp;", "&")
-                print(f"Processing Reddit image: {img_url}")
+                print(f"[{i+1}/{len(feed.entries)}] Attempting: {img_url}")
                 
                 # Process image
-                filename = f"reddit_{i}.bmp"
+                filename = f"reddit_{len(posts)}.bmp"
                 filepath = os.path.join(BITMAP_DIR, filename)
                 try:
                     # Run image processing in a thread to not block the event loop
-                    # Use 'smart' resize mode for Reddit images as requested
+                    # Note: process_image_url will now raise ValueError if image requires padding > 30%
                     await asyncio.to_thread(
                         image_processor.process_image_url, 
                         img_url, filepath,
-                        resize_mode='smart'
+                        resize_mode='fit'
                     )
                     posts.append({
                         "title": entry.title, 
@@ -81,13 +85,15 @@ async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
                     })
                     # Update global cache immediately so it's visible in preview and API
                     reddit_global_cache["posts"] = posts
-                    print(f"Added post {len(posts)}: {entry.title}")
+                    print(f"  SUCCESS: Added post {len(posts)}: {entry.title}")
+                except ValueError as ve:
+                    print(f"  SKIPPED: {ve}")
+                    continue
                 except Exception as img_err:
-                    print(f"Failed to process Reddit image {img_url}: {img_err}")
+                    print(f"  ERROR: Failed to process image: {img_err}")
                     continue
             else:
-                # print(f"No image found in post: {entry.title}")
-                pass
+                print(f"[{i+1}/{len(feed.entries)}] No image found in post: {entry.title}")
 
         reddit_global_cache["posts"] = posts
         reddit_global_cache["last_update"] = datetime.datetime.now()

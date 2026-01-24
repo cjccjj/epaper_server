@@ -30,7 +30,7 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
     """
     Resize image to fit within target_size. 
     If the required padding is less than stretch_threshold, stretch the image instead.
-    Otherwise, pad with white.
+    Otherwise, raise a ValueError (user cheat: only use images that don't need padding).
     """
     tw, th = target_size
     iw, ih = img.size
@@ -48,12 +48,8 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
         # If the gap is small, just stretch it to full target size
         return img.resize(target_size, Image.Resampling.LANCZOS)
     else:
-        # Otherwise, do the standard fit-with-white-padding
-        img = img.resize((nw, nh), Image.Resampling.LANCZOS)
-        new_img = Image.new("RGB", target_size, (255, 255, 255))
-        offset = ((tw - nw) // 2, (th - nh) // 2)
-        new_img.paste(img, offset)
-        return new_img
+        # User cheat: do not pad. If padding is needed, we drop this image.
+        raise ValueError(f"Image requires {fill_ratio:.1%} padding, which exceeds {stretch_threshold:.1%} threshold. Dropping.")
 
 def apply_ac(data, clip_pct=18):
     """Auto-Contrast logic ported from JS applyAC."""
