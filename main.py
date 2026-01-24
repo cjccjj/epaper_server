@@ -239,7 +239,6 @@ async def refresh_global_reddit_cache(subreddit="memes"):
     
     # Map of existing posts for reuse: {id: post_dict}
     existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "id" in p}
-    old_filenames = {p["bmp_filename"] for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "bmp_filename" in p}
     
     # We'll use a local counter for filenames to avoid collisions
     # Start counter after existing reddit files if any
@@ -318,10 +317,6 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                             strategy_posts_added += 1
                             filename_counter += 1
                             
-                            # Incremental save
-                            reddit_global_cache["posts"] = all_posts
-                            save_reddit_cache()
-                            
                             print(f"  SUCCESS [{strategy['label']}]: Added post {len(all_posts)}")
                         except ValueError as ve:
                             print(f"  SKIPPED: {ve}")
@@ -330,24 +325,29 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                             print(f"  ERROR: Failed to process image: {img_err}")
                             continue
                             
-        reddit_global_cache["posts"] = all_posts
-        reddit_global_cache["last_update"] = datetime.datetime.now()
-        reddit_global_cache["config"] = {"subreddit": subreddit}
-        save_reddit_cache()
-        
-        # Cleanup orphaned files: files that were in old cache but not in new cache
-        new_filenames = {p["bmp_filename"] for p in all_posts if isinstance(p, dict) and "bmp_filename" in p}
-        orphaned_files = old_filenames - new_filenames
-        for orphan in orphaned_files:
-            orphan_path = os.path.join(BITMAP_DIR, orphan)
-            if os.path.exists(orphan_path):
+            if not all_posts:
+                print("WARNING: No posts fetched from Reddit. Keeping old cache.")
+                return
+
+            # Atomically update global cache after successful fetch loop
+            reddit_global_cache["posts"] = all_posts
+            reddit_global_cache["last_update"] = datetime.datetime.now()
+            reddit_global_cache["config"] = {"subreddit": subreddit}
+            save_reddit_cache()
+            
+            # Cleanup orphaned files: ALL reddit_*.bmp files on disk that are not in the new cache
+            reddit_files_on_disk = {f for f in os.listdir(BITMAP_DIR) if f.startswith("reddit_") and f.endswith(".bmp")}
+            new_filenames = {p["bmp_filename"] for p in all_posts if isinstance(p, dict) and "bmp_filename" in p}
+            orphaned_files = reddit_files_on_disk - new_filenames
+            for orphan in orphaned_files:
+                orphan_path = os.path.join(BITMAP_DIR, orphan)
                 try:
                     os.remove(orphan_path)
                     print(f"DEBUG: Cleaned up orphaned reddit bitmap: {orphan}")
                 except Exception as e:
                     print(f"ERROR: Failed to remove orphan {orphan}: {e}")
 
-        print(f"Reddit global cache updated: {len(all_posts)} posts dithered using mixed strategy")
+            print(f"Reddit global cache updated: {len(all_posts)} posts dithered using mixed strategy")
         
     except Exception as e:
         print(f"Failed to refresh global Reddit cache: {e}")
@@ -453,15 +453,22 @@ def get_display(
             filename = "placeholder.bmp" # Fallback if no reddit posts found
     
     # Update contact time only after successful image selection
-    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    now_utc = datetime.datetime.now(datetime.UTC)
+    now = now_utc.replace(tzinfo=None)
     device.last_update_time = now
     device.next_expected_update = now + datetime.timedelta(seconds=current_refresh_rate)
     
     db.commit()
 
+    # Add cache-busting path for CloudFront/CDNs
+    # By putting the timestamp in the path, CloudFront will always see a unique URL
+    # even if it is configured to ignore query strings.
+    t_bust = int(now_utc.timestamp())
+    image_url = f"/api/bitmap/{t_bust}/{filename}"
+
     return {
         "status": 0,
-        "image_url": f"/api/bitmap/{filename}",
+        "image_url": image_url,
         "filename": filename,
         "refresh_rate": current_refresh_rate,
         "reset_firmware": False,
@@ -470,11 +477,11 @@ def get_display(
         "special_function": None
     }
 
+@app.get("/api/bitmap/{timestamp}/{filename}")
 @app.get("/api/bitmap/{filename}")
-def serve_bitmap(filename: str):
+def serve_bitmap(filename: str, timestamp: Optional[str] = None):
     path = os.path.join(BITMAP_DIR, filename)
     if not os.path.exists(path):
-        # Create a tiny dummy BMP if not found so the device doesn't crash
         return HTTPException(status_code=404, detail="Bitmap not found")
     return FileResponse(path)
 

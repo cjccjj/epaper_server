@@ -461,9 +461,9 @@
                 if (data.posts && data.posts.length > 0) {
                     dom.redditPreview.innerHTML = data.posts.map(post => `
                         <div class="reddit-post">
-                            <img src="/api/bitmap/${post.bmp_filename}?t=${Date.now()}" 
+                            <img src="/api/bitmap/${Date.now()}/${post.bmp_filename}" 
                                  alt="${post.title || ''}" 
-                                 onclick="showOverlay('/api/bitmap/${post.bmp_filename}')">
+                                 onclick="showOverlay('/api/bitmap/${Date.now()}/${post.bmp_filename}')">
                             <div class="post-title">${post.title || 'Reddit Post'}</div>
                         </div>
                     `).join('');
@@ -541,8 +541,8 @@
             
             // Gallery thumbnails are now only in the Gallery panel
             dom.gallery.innerHTML = d.images.map(i => `
-                <div class="image-item" onclick="showFull('/api/bitmap/${i.filename}')">
-                    <img src="/api/bitmap/${i.filename}">
+                <div class="image-item" onclick="showFull('/api/bitmap/${Date.now()}/${i.filename}')">
+                    <img src="/api/bitmap/${Date.now()}/${i.filename}">
                     <button class="delete-btn" onclick="event.stopPropagation(); deleteImg(${i.id})">×</button>
                 </div>
             `).join('');
