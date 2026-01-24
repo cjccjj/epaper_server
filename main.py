@@ -345,35 +345,16 @@ def get_display(
     elif device.active_dish == "reddit":
         posts = reddit_global_cache.get("posts", [])
         if posts:
-            # Initialize or clean history
-            if not hasattr(device, '_reddit_history'):
-                device._reddit_history = []
+            # Stateless selection: use current total minutes from epoch mod total posts
+            # This ensures that as long as the client doesn't request more than once per minute,
+            # they get a consistent sequence without duplicates for the duration of the cache size.
+            total_minutes = int(datetime.datetime.now(datetime.UTC).timestamp() // 60)
+            idx = total_minutes % len(posts)
             
-            # Filter posts to avoid recent duplicates
-            available_indices = [i for i in range(len(posts)) if i not in device._reddit_history]
-            
-            # If all posts shown, reset history but keep the very last one to avoid immediate repeat
-            if not available_indices:
-                last_idx = device._reddit_history[-1] if device._reddit_history else -1
-                device._reddit_history = [last_idx] if last_idx != -1 else []
-                available_indices = [i for i in range(len(posts)) if i != last_idx]
-
-            # Select a random index from available ones
-            if available_indices:
-                idx = random.choice(available_indices)
-            else:
-                idx = 0 # Fallback
-                
             current_post = posts[idx]
             filename = current_post["bmp_filename"]
             
-            # Track history (keep last 50% of total posts to ensure variety)
-            device._reddit_history.append(idx)
-            max_history = max(1, len(posts) // 2)
-            if len(device._reddit_history) > max_history:
-                device._reddit_history.pop(0)
-            
-            # Still update current_image_index for compatibility/visibility
+            # Update current_image_index for visibility in Admin UI
             device.current_image_index = idx
         else:
             filename = "placeholder.bmp" # Fallback if no reddit posts found
