@@ -250,7 +250,7 @@
         let devices = [];
         let img = new Image();
         let activeDish = 'gallery';
-        let currentTab = 'gallery';
+        let currentTab = localStorage.getItem('lastSelectedTab') || 'gallery';
         
         const dom = {
             select: document.getElementById('deviceSelect'),
@@ -347,23 +347,41 @@
         }
 
         async function setActiveDish(dish) {
-            console.log('Setting active dish to:', dish);
             activeDish = dish;
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.active_dish = dish;
-            updateUI(); 
+            
+            // Update Active Dish Selection Indicator ONLY
+            document.querySelectorAll('.dish-btn').forEach(btn => {
+                btn.classList.toggle('active-dish', btn.dataset.dish === activeDish);
+            });
+
             await saveSettings({active_dish: dish});
         }
 
         function showTab(tab) {
-            console.log('Showing tab:', tab);
             currentTab = tab;
-            updateUI();
+            localStorage.setItem('lastSelectedTab', tab);
+            
+            // Update Tabs Indicator
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === currentTab);
+            });
+
+            // Show relevant panel based on TAB
+            document.querySelectorAll('.tab-content').forEach(panel => {
+                panel.classList.toggle('hidden', panel.id !== `panel-${currentTab}`);
+            });
+            
+            if (currentTab === 'reddit') loadRedditPreview();
         }
 
         async function fetchRedditNow() {
             dom.fetchNowBtn.disabled = true;
             dom.fetchNowBtn.textContent = '⏳ Saving & Fetching...';
+            const statusBox = document.getElementById('redditStatus');
+            const originalStatus = statusBox.innerHTML;
+            statusBox.innerHTML = '<span style="color: #fbbf24;">⚡ Fetch triggered! Images are being processed in background. Please refresh preview in 5-10 seconds.</span>';
             
             try {
                 // 1. Save Config first
@@ -381,22 +399,24 @@
                 });
                 
                 if (res.ok) {
-                    // Since it's a background task on the server, we wait a few seconds before refreshing the preview
                     setTimeout(async () => {
                         await loadRedditPreview();
                         dom.fetchNowBtn.disabled = false;
                         dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
-                        alert('Config saved and fetch triggered! Images are being processed in the background.');
-                    }, 2000);
+                        // Keep the fetch notice for a bit then revert or update
+                        setTimeout(() => { if (statusBox.innerText.includes('Fetch triggered')) statusBox.innerHTML = originalStatus; }, 10000);
+                    }, 3000);
                 } else {
-                    alert('Failed to trigger fetch.');
+                    statusBox.innerHTML = '<span style="color: #ef4444;">❌ Failed to trigger fetch.</span>';
                     dom.fetchNowBtn.disabled = false;
                     dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                    setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
                 }
             } catch (e) {
-                alert('Error: ' + e);
+                statusBox.innerHTML = `<span style="color: #ef4444;">❌ Error: ${e}</span>`;
                 dom.fetchNowBtn.disabled = false;
                 dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
             }
         }
 
@@ -423,11 +443,16 @@
                     const d = devices.find(x => x.mac_address === currentMac);
                     const timeStr = data.last_update.endsWith('Z') ? data.last_update : data.last_update + 'Z';
                     const date = new Date(timeStr);
-                    document.getElementById('lastFetchTime').textContent = new Intl.DateTimeFormat('en-US', {
-                        dateStyle: 'medium',
-                        timeStyle: 'medium',
+                    document.getElementById('lastFetchTime').textContent = new Intl.DateTimeFormat('en-GB', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false,
                         timeZone: d.timezone || 'UTC'
-                    }).format(date);
+                    }).format(date).replace(/\//g, '-').replace(',', '');
                 }
                 if (data.rate_hours) {
                     document.getElementById('fetchRate').textContent = data.rate_hours;
@@ -495,11 +520,16 @@
                 // Ensure the ISO string is treated as UTC by appending 'Z' if not present
                 const timeStr = d.last_update_time.endsWith('Z') ? d.last_update_time : d.last_update_time + 'Z';
                 const date = new Date(timeStr);
-                lastSeen = new Intl.DateTimeFormat('en-US', {
-                    dateStyle: 'medium',
-                    timeStyle: 'medium',
+                lastSeen = new Intl.DateTimeFormat('en-GB', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
                     timeZone: d.timezone || 'UTC'
-                }).format(date);
+                }).format(date).replace(/\//g, '-').replace(',', '');
             }
 
             dom.meta.innerHTML = `
@@ -522,19 +552,8 @@
                 btn.classList.toggle('active-dish', btn.dataset.dish === activeDish);
             });
 
-            // Update Tabs Indicator
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === currentTab);
-            });
-
-            // Show relevant panel based on TAB, not active dish
-            document.querySelectorAll('.tab-content').forEach(panel => {
-                panel.classList.toggle('hidden', panel.id !== `panel-${currentTab}`);
-            });
-
-            if (currentTab === 'reddit') {
-                loadRedditPreview();
-            }
+            // Ensure the correct tab is shown
+            showTab(currentTab);
 
             // Update Reddit Config inputs
             if (d.reddit_config) {

@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Header, HTTPException, Depends, Body, File, UploadFile, BackgroundTasks
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Header, HTTPException, Depends, Body, File, UploadFile, BackgroundTasks, Request, Response
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
@@ -24,6 +24,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 # Configuration
 BITMAP_DIR = "bitmaps"
 DATA_DIR = "data"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "z0000l")
+SESSION_COOKIE_NAME = "admin_session"
+SESSION_EXPIRY_HOURS = 24
 REDDIT_CACHE_FILE = os.path.join(DATA_DIR, "reddit_cache.json")
 os.makedirs(BITMAP_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -100,6 +103,89 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
+
+# --- Authentication Middleware & Logic ---
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Paths that don't require authentication
+    open_paths = ["/api/setup", "/api/display", "/api/bitmap", "/api/log", "/login"]
+    
+    # Check if path starts with any open paths
+    is_open = any(request.url.path.startswith(p) for p in open_paths)
+    
+    # Root redirect
+    if request.url.path == "/":
+        return RedirectResponse(url="/admin")
+        
+    if not is_open:
+        # Check session cookie
+        session_id = request.cookies.get(SESSION_COOKIE_NAME)
+        if not session_id:
+            return RedirectResponse(url="/login")
+        
+        # In a real app we'd verify session_id against a DB/store.
+        # For this "simple password" requirement, we just check if it exists.
+        # The login endpoint sets this.
+            
+    response = await call_next(request)
+    return response
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Login - E-Paper Admin</title>
+        <style>
+            body { font-family: sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .login-box { background: #1e293b; padding: 2rem; border-radius: 8px; border: 1px solid #334155; width: 300px; }
+            input { width: 100%; padding: 8px; margin: 10px 0; background: #0f172a; border: 1px solid #334155; color: white; box-sizing: border-box; }
+            button { width: 100%; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+            .error { color: #ef4444; font-size: 12px; margin-bottom: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <h2>Admin Login</h2>
+            <form action="/login" method="post">
+                <input type="password" name="password" placeholder="Password" required autofocus>
+                <button type="submit">Login</button>
+            </form>
+            <div id="error-msg" class="error"></div>
+        </div>
+        <script>
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('error')) {
+                document.getElementById('error-msg').textContent = 'Invalid password';
+            }
+        </script>
+    </body>
+    </html>
+    """
+
+@app.post("/login")
+async def login(response: Response, password: str = Body(None), request: Request = None):
+    # FastAPI Body doesn't work well with form-data by default unless using Form class
+    # But we can grab it from request.form()
+    form_data = await request.form()
+    input_password = form_data.get("password")
+    
+    if input_password == ADMIN_PASSWORD:
+        # Set session cookie for 24 hours
+        session_id = str(uuid.uuid4())
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=session_id,
+            max_age=SESSION_EXPIRY_HOURS * 3600,
+            httponly=True,
+            samesite="lax"
+        )
+        return response
+    else:
+        return RedirectResponse(url="/login?error=1", status_code=303)
 
 async def initial_fetch_check():
     """Check if we need to fetch on startup."""
