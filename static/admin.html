@@ -101,7 +101,17 @@
         .dish-toggle-group { display: flex; gap: 4px; background: var(--input-bg); padding: 3px; border-radius: 6px; border: 1px solid var(--border); }
         .dish-btn { background: transparent; border: none; color: var(--text-dim); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; }
         .dish-btn:hover { color: var(--text); background: var(--panel-light); }
-        .dish-btn.active { background: var(--primary); color: white; font-weight: bold; }
+        .dish-btn.active-dish { background: #10b981; color: white; font-weight: bold; position: relative; }
+        .dish-btn.active-dish::after { content: "ACTIVE"; position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; font-size: 7px; padding: 1px 3px; border-radius: 3px; border: 1px solid var(--bg); }
+
+        /* Tabs System */
+        .tab-bar { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+        .tab-btn { background: var(--panel); border: 1px solid var(--border); border-bottom: none; color: var(--text-dim); padding: 8px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; transition: 0.2s; margin-bottom: -1px; }
+        .tab-btn:hover { background: var(--panel-light); color: var(--text); }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        
+        .tab-content { background: var(--panel); padding: 12px; border-radius: 0 0 6px 6px; border: 1px solid var(--border); border-top: none; }
+        .tab-content h3 { margin: 0 0 12px 0; font-size: 0.95rem; color: var(--primary); display: flex; align-items: center; gap: 8px; }
 
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; cursor: pointer; }
         #overlay img { max-width: 98%; max-height: 98%; }
@@ -129,19 +139,25 @@
                 </div>
                 <div class="device-meta" id="deviceMeta"></div>
                 
-                <!-- Dish Selector (Moved here) -->
+                <!-- Dish Selector -->
                 <div class="dish-selector-row">
                     <label>Active Dish:</label>
                     <div class="dish-toggle-group">
-                        <button class="dish-btn" data-dish="gallery" onclick="switchDish('gallery')">🖼️ Gallery</button>
-                        <button class="dish-btn" data-dish="reddit" onclick="switchDish('reddit')">Reddit Top</button>
+                        <button class="dish-btn" data-dish="gallery" onclick="setActiveDish('gallery')">🖼️ Gallery</button>
+                        <button class="dish-btn" data-dish="reddit" onclick="setActiveDish('reddit')">Reddit Top</button>
                     </div>
                 </div>
             </div>
 
+            <!-- Tabs Bar -->
+            <div class="tab-bar">
+                <button class="tab-btn" data-tab="gallery" onclick="showTab('gallery')">🖼️ Gallery Config</button>
+                <button class="tab-btn" data-tab="reddit" onclick="showTab('reddit')">Reddit Config</button>
+            </div>
+
             <!-- Gallery Dish Panel -->
-            <div id="panel-gallery" class="dish-panel dish-content hidden">
-                <h3>Gallery Manager</h3>
+            <div id="panel-gallery" class="tab-content hidden">
+                <h3>🖼️ Gallery Manager</h3>
                 <div class="gallery" id="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;"></div>
                 <div class="controls-top">
                     <div class="size-row">
@@ -186,7 +202,7 @@
             </div>
 
             <!-- Reddit Dish Panel -->
-            <div id="panel-reddit" class="dish-panel dish-content hidden">
+            <div id="panel-reddit" class="tab-content hidden">
                 <h3>Reddit Top Config</h3>
                 <div class="reddit-config">
                     <div class="config-group">
@@ -229,6 +245,7 @@
         let devices = [];
         let img = new Image();
         let activeDish = 'gallery';
+        let currentTab = 'gallery';
         
         const dom = {
             select: document.getElementById('deviceSelect'),
@@ -314,13 +331,19 @@
             });
         }
 
-        async function switchDish(dish) {
-            console.log('Switching to dish:', dish);
+        async function setActiveDish(dish) {
+            console.log('Setting active dish to:', dish);
             activeDish = dish;
             const d = devices.find(x => x.mac_address === currentMac);
-            if (d) d.active_dish = dish; // Update local state immediately
-            updateUI(); // Update UI immediately
+            if (d) d.active_dish = dish;
+            updateUI(); 
             await saveSettings({active_dish: dish});
+        }
+
+        function showTab(tab) {
+            console.log('Showing tab:', tab);
+            currentTab = tab;
+            updateUI();
         }
 
         async function fetchRedditNow() {
@@ -453,17 +476,22 @@
                 </div>
             `).join('');
 
-            // Update Dish Selection (Updated for button group)
+            // Update Active Dish Selection Indicator
             document.querySelectorAll('.dish-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.dish === activeDish);
+                btn.classList.toggle('active-dish', btn.dataset.dish === activeDish);
             });
 
-            // Show relevant panel
-            document.querySelectorAll('.dish-content').forEach(panel => {
-                panel.classList.toggle('hidden', panel.id !== `panel-${activeDish}`);
+            // Update Tabs Indicator
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === currentTab);
             });
 
-            if (activeDish === 'reddit') {
+            // Show relevant panel based on TAB, not active dish
+            document.querySelectorAll('.tab-content').forEach(panel => {
+                panel.classList.toggle('hidden', panel.id !== `panel-${currentTab}`);
+            });
+
+            if (currentTab === 'reddit') {
                 loadRedditPreview();
             }
 

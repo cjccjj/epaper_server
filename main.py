@@ -7,6 +7,7 @@ import uuid
 import datetime
 import os
 import shutil
+import json
 import feedparser
 import requests
 import httpx
@@ -21,7 +22,10 @@ app = FastAPI()
 
 # Configuration
 BITMAP_DIR = "bitmaps"
+DATA_DIR = "data"
+REDDIT_CACHE_FILE = os.path.join(DATA_DIR, "reddit_cache.json")
 os.makedirs(BITMAP_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # Reddit User Agent
 REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
@@ -37,6 +41,38 @@ reddit_global_cache = {
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
+
+def save_reddit_cache():
+    """Save the global reddit cache to a persistent JSON file."""
+    try:
+        cache_data = reddit_global_cache.copy()
+        if cache_data["last_update"]:
+            cache_data["last_update"] = cache_data["last_update"].isoformat()
+        
+        with open(REDDIT_CACHE_FILE, "w") as f:
+            json.dump(cache_data, f)
+        print(f"DEBUG: Reddit cache saved to {REDDIT_CACHE_FILE}")
+    except Exception as e:
+        print(f"ERROR: Failed to save reddit cache: {e}")
+
+def load_reddit_cache():
+    """Load the global reddit cache from the persistent JSON file."""
+    global reddit_global_cache
+    if os.path.exists(REDDIT_CACHE_FILE):
+        try:
+            with open(REDDIT_CACHE_FILE, "r") as f:
+                data = json.load(f)
+                if data.get("last_update"):
+                    data["last_update"] = datetime.datetime.fromisoformat(data["last_update"])
+                
+                # Merge loaded data into global cache
+                reddit_global_cache.update(data)
+                print(f"DEBUG: Reddit cache loaded from {REDDIT_CACHE_FILE} (Last update: {reddit_global_cache['last_update']})")
+        except Exception as e:
+            print(f"ERROR: Failed to load reddit cache: {e}")
+
+# Load cache on module import
+load_reddit_cache()
 
 # Initialize database
 database.init_db()
@@ -142,6 +178,7 @@ async def refresh_global_reddit_cache(subreddit="memes", sort="top", time="day")
                     })
                     # Update global cache immediately so it's visible in preview and API
                     reddit_global_cache["posts"] = posts
+                    save_reddit_cache()
                     print(f"  SUCCESS: Added post {len(posts)}: {entry.title}")
                 except ValueError as ve:
                     print(f"  SKIPPED: {ve}")
@@ -155,6 +192,7 @@ async def refresh_global_reddit_cache(subreddit="memes", sort="top", time="day")
         reddit_global_cache["posts"] = posts
         reddit_global_cache["last_update"] = datetime.datetime.now()
         reddit_global_cache["config"] = {"subreddit": subreddit, "sort": sort, "time": time}
+        save_reddit_cache()
         print(f"Reddit global cache updated: {len(posts)} posts dithered")
     except Exception as e:
         print(f"Failed to refresh global Reddit cache: {e}")
@@ -346,6 +384,7 @@ async def reddit_fetch_now(background_tasks: BackgroundTasks, config: dict = Bod
         "sort": sort or last_config.get("sort", "top"),
         "time": time or last_config.get("time", "day")
     }
+    save_reddit_cache()
 
     print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']}")
     background_tasks.add_task(scheduled_reddit_update)
