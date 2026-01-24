@@ -5,7 +5,7 @@ import numpy as np
 import os
 
 # Configuration for image processing
-STRETCH_THRESHOLD = 0.30  # If padding ratio is less than this, stretch image instead of padding
+STRETCH_THRESHOLD = 0.33  # If padding ratio is less than this, stretch image instead of padding
 
 def resize_if_large(img, max_dim=1024):
     """Resize image if any dimension exceeds max_dim, maintaining aspect ratio."""
@@ -51,7 +51,7 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
         # User cheat: do not pad. If padding is needed, we drop this image.
         raise ValueError(f"Image requires {fill_ratio:.1%} padding, which exceeds {stretch_threshold:.1%} threshold. Dropping.")
 
-def apply_ac(data, clip_pct=18):
+def apply_ac(data, clip_pct=30):
     """Auto-Contrast logic ported from JS applyAC."""
     h, w = data.shape
     hist, _ = np.histogram(data, bins=256, range=(0, 256))

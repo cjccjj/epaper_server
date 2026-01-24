@@ -14,6 +14,8 @@ import re
 import asyncio
 import image_processor
 from typing import Optional, List
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 app = FastAPI()
 
@@ -25,19 +27,74 @@ os.makedirs(BITMAP_DIR, exist_ok=True)
 REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
 
 # Cache for Reddit top images to avoid frequent fetching
-# Format: { "images": [filenames], "last_update": datetime }
-reddit_global_cache = {"posts": [], "last_update": None}
+# Format: { "posts": [], "last_update": datetime, "config": {}, "rate_hours": 8 }
+reddit_global_cache = {
+    "posts": [], 
+    "last_update": None, 
+    "config": {"subreddit": "memes", "sort": "top", "time": "day"},
+    "rate_hours": 8
+}
+
+# Initialize scheduler
+scheduler = AsyncIOScheduler()
 
 # Initialize database
 database.init_db()
 
 @app.on_event("startup")
 async def startup_event():
-    # Start a background task to refresh Reddit feeds periodically
-    # It will use the last known config or wait for manual fetch
-    asyncio.create_task(reddit_update_daemon())
+    # Start the scheduler
+    scheduler.start()
+    
+    # Add Reddit update job
+    scheduler.add_job(
+        scheduled_reddit_update,
+        IntervalTrigger(hours=reddit_global_cache["rate_hours"]),
+        id="reddit_update",
+        replace_existing=True
+    )
+    
+    # Initial check/fetch
+    asyncio.create_task(initial_fetch_check())
 
-async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
+async def initial_fetch_check():
+    """Check if we need to fetch on startup."""
+    needs_fetch = False
+    if not reddit_global_cache["posts"]:
+        print("DEBUG: No posts in cache, triggering initial fetch")
+        needs_fetch = True
+    elif reddit_global_cache["last_update"]:
+        elapsed = datetime.datetime.now() - reddit_global_cache["last_update"]
+        if elapsed.total_seconds() > reddit_global_cache["rate_hours"] * 3600:
+            print(f"DEBUG: Cache expired ({elapsed.total_seconds()/3600:.1f}h old), triggering fetch")
+            needs_fetch = True
+    
+    if needs_fetch:
+        await scheduled_reddit_update()
+
+async def scheduled_reddit_update():
+    """Job wrapper with retry logic."""
+    config = reddit_global_cache["config"]
+    retries = 2
+    for attempt in range(retries + 1):
+        try:
+            print(f"DEBUG: Scheduled Reddit fetch attempt {attempt + 1}")
+            await refresh_global_reddit_cache(
+                subreddit=config.get("subreddit", "memes"),
+                sort=config.get("sort", "top"),
+                time=config.get("time", "day")
+            )
+            print("DEBUG: Scheduled Reddit fetch successful")
+            return
+        except Exception as e:
+            print(f"ERROR: Reddit fetch attempt {attempt + 1} failed: {e}")
+            if attempt < retries:
+                wait_time = 30 * (attempt + 1)
+                print(f"DEBUG: Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+    print("ERROR: All Reddit fetch attempts failed. Waiting for next scheduled run.")
+
+async def refresh_global_reddit_cache(subreddit="memes", sort="top", time="day"):
     """Fetches the top images from Reddit RSS and dithers them for the global cache."""
     print(f"DEBUG: refresh_global_reddit_cache called with subreddit={subreddit}, sort={sort}, time={time}")
     url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
@@ -102,20 +159,6 @@ async def refresh_global_reddit_cache(subreddit="pics", sort="top", time="day"):
     except Exception as e:
         print(f"Failed to refresh global Reddit cache: {e}")
 
-async def reddit_update_daemon():
-    """Background daemon to update Reddit feeds periodically."""
-    while True:
-        # Wait for an hour
-        await asyncio.sleep(3600)
-        
-        # Try to use the last known successful config, or default
-        config = reddit_global_cache.get("config", {"subreddit": "pics", "sort": "top", "time": "day"})
-        print(f"DEBUG: Background daemon refreshing Reddit cache for r/{config.get('subreddit')}")
-        await refresh_global_reddit_cache(
-            subreddit=config.get("subreddit", "pics"),
-            sort=config.get("sort", "top"),
-            time=config.get("time", "day")
-        )
 
 # Dependency to get the database session
 def get_db():
@@ -291,21 +334,22 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
 
 @app.post("/admin/reddit/fetch_now")
 async def reddit_fetch_now(background_tasks: BackgroundTasks, config: dict = Body(...)):
-    """Triggers an immediate refresh of the global Reddit cache."""
+    """Triggers an immediate refresh of the global Reddit cache and updates scheduler."""
     subreddit = config.get("subreddit")
     sort = config.get("sort")
     time = config.get("time")
     
-    if not subreddit:
-        # Fallback to last known or default if not provided
-        last_config = reddit_global_cache.get("config", {})
-        subreddit = last_config.get("subreddit", "pics")
-        sort = last_config.get("sort", "top")
-        time = last_config.get("time", "day")
+    # Update global config
+    last_config = reddit_global_cache.get("config", {})
+    reddit_global_cache["config"] = {
+        "subreddit": subreddit or last_config.get("subreddit", "memes"),
+        "sort": sort or last_config.get("sort", "top"),
+        "time": time or last_config.get("time", "day")
+    }
 
-    print(f"DEBUG: Manual fetch triggered for r/{subreddit} ({sort}/{time})")
-    background_tasks.add_task(refresh_global_reddit_cache, subreddit, sort, time)
-    return {"status": "success", "message": f"Fetch started for r/{subreddit}"}
+    print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']}")
+    background_tasks.add_task(scheduled_reddit_update)
+    return {"status": "success", "message": f"Fetch started for r/{reddit_global_cache['config']['subreddit']}"}
 
 @app.post("/admin/upload/{mac}")
 async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
