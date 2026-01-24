@@ -2,6 +2,7 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Body, File, UploadF
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
 import database
 import uuid
 import datetime
@@ -18,8 +19,6 @@ import random
 from typing import Optional, List
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-
-app = FastAPI()
 
 # Configuration
 BITMAP_DIR = "bitmaps"
@@ -78,9 +77,9 @@ load_reddit_cache()
 # Initialize database
 database.init_db()
 
-@app.on_event("startup")
-async def startup_event():
-    # Start the scheduler
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
     scheduler.start()
     
     # Add Reddit update job
@@ -93,6 +92,13 @@ async def startup_event():
     
     # Initial check/fetch
     asyncio.create_task(initial_fetch_check())
+    
+    yield
+    
+    # Shutdown logic
+    scheduler.shutdown()
+
+app = FastAPI(lifespan=lifespan)
 
 async def initial_fetch_check():
     """Check if we need to fetch on startup."""
