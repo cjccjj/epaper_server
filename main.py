@@ -145,8 +145,8 @@ async def refresh_global_reddit_cache(subreddit="memes"):
     seen_ids = set()
     
     # Map of existing posts for reuse: {id: post_dict}
-    existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", [])}
-    old_filenames = {p["bmp_filename"] for p in reddit_global_cache.get("posts", [])}
+    existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "id" in p}
+    old_filenames = {p["bmp_filename"] for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "bmp_filename" in p}
     
     # We'll use a local counter for filenames to avoid collisions
     # Start counter after existing reddit files if any
@@ -243,7 +243,7 @@ async def refresh_global_reddit_cache(subreddit="memes"):
         save_reddit_cache()
         
         # Cleanup orphaned files: files that were in old cache but not in new cache
-        new_filenames = {p["bmp_filename"] for p in all_posts}
+        new_filenames = {p["bmp_filename"] for p in all_posts if isinstance(p, dict) and "bmp_filename" in p}
         orphaned_files = old_filenames - new_filenames
         for orphan in orphaned_files:
             orphan_path = os.path.join(BITMAP_DIR, orphan)
