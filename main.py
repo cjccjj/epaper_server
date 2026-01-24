@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import database
 import uuid
 import datetime
+import pytz
 import os
 import shutil
 import json
@@ -411,6 +412,14 @@ def list_devices(db: Session = Depends(get_db)):
     devices = db.query(database.Device).all()
     result = []
     for d in devices:
+        # Calculate current local time for the device
+        device_time = "Unknown"
+        try:
+            tz = pytz.timezone(d.timezone or "UTC")
+            device_time = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            print(f"Error calculating time for TZ {d.timezone}: {e}")
+
         result.append({
             "mac_address": d.mac_address,
             "friendly_id": d.friendly_id,
@@ -418,6 +427,7 @@ def list_devices(db: Session = Depends(get_db)):
             "rssi": d.rssi,
             "refresh_rate": d.refresh_rate,
             "timezone": d.timezone,
+            "device_time": device_time,
             "active_dish": d.active_dish,
             "reddit_config": d.reddit_config,
             "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,

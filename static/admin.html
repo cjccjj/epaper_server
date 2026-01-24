@@ -147,7 +147,12 @@
                             <option value="Europe/Paris">Paris</option>
                             <option value="Asia/Tokyo">Tokyo</option>
                             <option value="Asia/Shanghai">Shanghai</option>
+                            <option value="Asia/Hong_Kong">Hong Kong</option>
+                            <option value="Asia/Singapore">Singapore</option>
+                            <option value="Asia/Seoul">Seoul</option>
                             <option value="Australia/Sydney">Sydney</option>
+                            <option value="Australia/Melbourne">Melbourne</option>
+                            <option value="Pacific/Auckland">Auckland</option>
                         </select>
                     </div>
                 </div>
@@ -298,7 +303,10 @@
                 const d = devices.find(x => x.mac_address === currentMac);
                 if (d) d.timezone = val;
                 updateUI(); // Refresh UI to show time in new TZ
-                saveSettings({timezone: val});
+                saveSettings({timezone: val}).then(() => {
+                    // Refresh devices to get updated server-calculated time
+                    fetchDevices();
+                });
             });
 
             [dom.clip, dom.layers, dom.strength].forEach(i => {
@@ -413,7 +421,8 @@
                 // Update status info
                 if (data.last_update) {
                     const d = devices.find(x => x.mac_address === currentMac);
-                    const date = new Date(data.last_update);
+                    const timeStr = data.last_update.endsWith('Z') ? data.last_update : data.last_update + 'Z';
+                    const date = new Date(timeStr);
                     document.getElementById('lastFetchTime').textContent = new Intl.DateTimeFormat('en-US', {
                         dateStyle: 'medium',
                         timeStyle: 'medium',
@@ -483,7 +492,9 @@
 
             let lastSeen = 'Never';
             if (d.last_update_time) {
-                const date = new Date(d.last_update_time);
+                // Ensure the ISO string is treated as UTC by appending 'Z' if not present
+                const timeStr = d.last_update_time.endsWith('Z') ? d.last_update_time : d.last_update_time + 'Z';
+                const date = new Date(timeStr);
                 lastSeen = new Intl.DateTimeFormat('en-US', {
                     dateStyle: 'medium',
                     timeStyle: 'medium',
@@ -494,6 +505,7 @@
             dom.meta.innerHTML = `
                 <span>🔋 ${d.battery_voltage || '?'}V</span>
                 <span>📶 ${d.rssi || '?'} dBm</span>
+                <span title="Current local time of the device based on its timezone">⏰ Local Time: ${d.device_time || 'Unknown'}</span>
                 <span title="Last time the device successfully requested an image">🕒 Last Image Fetch: ${lastSeen}</span>
             `;
             
