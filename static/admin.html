@@ -229,7 +229,7 @@
                         <input type="text" id="redditSub" placeholder="e.g. memes">
                     </div>
                     <div id="redditStatus" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-                        Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">8</span> hours
+                        Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">3</span> hours
                     </div>
                     <div class="config-actions">
                         <button class="btn-save" onclick="saveRedditConfig()">Save Config</button>
@@ -438,17 +438,8 @@
                 const data = await res.json();
                 
                 // Update status info
-                if (data.last_update) {
-                    // Use server time and timezone provided by API
-                    const lastUpdateDate = new Date(data.last_update);
-                    const formattedDate = lastUpdateDate.getFullYear() + '-' + 
-                        String(lastUpdateDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                        String(lastUpdateDate.getDate()).padStart(2, '0') + ' ' + 
-                        String(lastUpdateDate.getHours()).padStart(2, '0') + ':' + 
-                        String(lastUpdateDate.getMinutes()).padStart(2, '0') + ':' + 
-                        String(lastUpdateDate.getSeconds()).padStart(2, '0');
-                    
-                    document.getElementById('lastFetchTime').textContent = `${formattedDate} (${data.server_tz})`;
+                if (data.last_update_formatted) {
+                    document.getElementById('lastFetchTime').textContent = `${data.last_update_formatted} (${data.server_tz})`;
                 }
                 if (data.rate_hours) {
                     document.getElementById('fetchRate').textContent = data.rate_hours;

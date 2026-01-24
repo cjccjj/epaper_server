@@ -71,6 +71,12 @@ def load_reddit_cache():
                 
                 # Merge loaded data into global cache
                 reddit_global_cache.update(data)
+                
+                # Force rate_hours to 3 if we are changing the policy
+                if reddit_global_cache.get("rate_hours") != 3:
+                    reddit_global_cache["rate_hours"] = 3
+                    save_reddit_cache() # Persist the new rate
+                    
                 print(f"DEBUG: Reddit cache loaded from {REDDIT_CACHE_FILE} (Last update: {reddit_global_cache['last_update']})")
         except Exception as e:
             print(f"ERROR: Failed to load reddit cache: {e}")
@@ -569,6 +575,7 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
     return {
         "posts": reddit_global_cache["posts"],
         "last_update": reddit_global_cache["last_update"].isoformat() if reddit_global_cache["last_update"] else None,
+        "last_update_formatted": reddit_global_cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if reddit_global_cache["last_update"] else "Never",
         "rate_hours": reddit_global_cache["rate_hours"],
         "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "server_tz": server_tz
