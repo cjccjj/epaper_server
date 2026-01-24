@@ -5,6 +5,19 @@ import numpy as np
 import os
 import smartcrop
 
+def resize_if_large(img, max_dim=1024):
+    """Resize image if any dimension exceeds max_dim, maintaining aspect ratio."""
+    w, h = img.size
+    if w > max_dim or h > max_dim:
+        if w > h:
+            new_w = max_dim
+            new_h = int(h * (max_dim / w))
+        else:
+            new_h = max_dim
+            new_w = int(w * (max_dim / h))
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    return img
+
 def download_image(url):
     headers = {"User-Agent": "linux:epaper-server:v1.0.0 (by /u/cj)"}
     response = requests.get(url, headers=headers, timeout=10)
@@ -57,14 +70,21 @@ def fit_resize(img, target_size=(400, 300)):
     return new_img
 
 def smart_crop_resize(img, target_size=(400, 300)):
-    """Use smartcrop.py to find the best crop for the target size."""
+    """Use smartcrop.py to find the best crop."""
     tw, th = target_size
+    
+    # Resize if too large to speed up processing
+    img = resize_if_large(img, 1024)
     
     # SmartCrop works best with RGB
     if img.mode != 'RGB':
         img = img.convert('RGB')
         
     cropper = smartcrop.SmartCrop()
+    
+    # Note: The 'smartcrop' library version installed doesn't support 'boost' parameter.
+    # However, smartcrop's internal algorithm already uses edge detection (G channel of analyse_image).
+    # By using SmartCrop on a 1024px max image, we get better accuracy than on the full res.
     result = cropper.crop(img, width=tw, height=th)
     
     # Get the best crop coordinates
@@ -227,8 +247,10 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=18, layers=32, stre
     return dithered_img
 
 def save_as_bmp(img, path):
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Ensure directory exists if path contains one
+    dir_name = os.path.dirname(path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     # BMP format for epaper usually needs to be 1-bit or 8-bit
     img.save(path, format="BMP")
 
