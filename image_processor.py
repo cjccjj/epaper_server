@@ -51,7 +51,7 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
         # User cheat: do not pad. If padding is needed, we drop this image.
         raise ValueError(f"Image requires {fill_ratio:.1%} padding, which exceeds {stretch_threshold:.1%} threshold. Dropping.")
 
-def apply_ac(data, clip_pct=40, cost_pct=10):
+def apply_ac(data, clip_pct=22, cost_pct=6):
     """Weighted Approaching Auto-Contrast logic ported from JS."""
     h, w = data.shape
     hist, _ = np.histogram(data, bins=256, range=(0, 256))
@@ -136,7 +136,7 @@ def apply_burkes(data):
                 
     return out.astype(np.uint8)
 
-def process_and_dither(img, target_size=(400, 300), clip_pct=40, cost_pct=10, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
+def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
     # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     

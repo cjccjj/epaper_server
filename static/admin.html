@@ -564,20 +564,18 @@
             const clip = parseInt(dom.clip.value);
             const cost = parseInt(dom.cost.value);
 
-            // 1. Resize/Crop logic
+            // 1. Resize/Crop logic (Crop resize to fill target size)
             dom.cOri.width = tw;
             dom.cOri.height = th;
             dom.cDit.width = tw;
             dom.cDit.height = th;
 
-            const scale = Math.min(tw / img.width, th / img.height);
+            const scale = Math.max(tw / img.width, th / img.height);
             const nw = img.width * scale;
             const nh = img.height * scale;
             const ox = (tw - nw) / 2;
             const oy = (th - nh) / 2;
 
-            gOri.fillStyle = "white";
-            gOri.fillRect(0, 0, tw, th);
             gOri.drawImage(img, ox, oy, nw, nh);
 
             // 2. Grayscale
