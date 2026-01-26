@@ -191,16 +191,16 @@
                     
                     <div class="control-row">
                         <div class="control-group">
-                            <label>Contrast</label>
-                            <input type="range" id="clip" min="0" max="100" value="18">
-                            <span class="val"><span id="clipValue">18</span>%</span>
+                            <label>Clip %</label>
+                            <input type="range" id="clip" min="0" max="60" value="40">
+                            <span class="val"><span id="clipValue">40</span>%</span>
                         </div>
                         <div class="control-group">
-                            <label>Layers</label>
-                            <input type="range" id="layers" min="0" max="8" step="1" value="5">
-                            <span class="val" id="layersValue">32</span>
+                            <label>Cost %</label>
+                            <input type="range" id="cost" min="0" max="60" value="10">
+                            <span class="val"><span id="costValue">10</span>%</span>
                         </div>
-                        <div class="control-group">
+                        <div class="control-group hidden">
                             <label>Strength</label>
                             <input type="range" id="strength" min="0" max="1" step="0.05" value="0">
                             <span class="val" id="strengthValue">0</span>
@@ -264,7 +264,7 @@
             targetW: document.getElementById('targetW'),
             targetH: document.getElementById('targetH'),
             clip: document.getElementById('clip'),
-            layers: document.getElementById('layers'),
+            cost: document.getElementById('cost'),
             strength: document.getElementById('strength'),
             stats: document.getElementById('stats'),
             cOri: document.getElementById('cOriginal'),
@@ -309,13 +309,9 @@
                 });
             });
 
-            [dom.clip, dom.layers, dom.strength].forEach(i => {
+            [dom.clip, dom.cost, dom.strength].forEach(i => {
                 i.addEventListener('input', () => {
                     let displayVal = i.value;
-                    if (i.id === 'layers') {
-                        const layersMap = [0, 2, 4, 8, 16, 32, 64, 128, 256];
-                        displayVal = layersMap[i.value];
-                    }
                     document.getElementById(i.id+'Value').textContent = displayVal;
                     process();
                 });
@@ -562,116 +558,121 @@
         }
 
         function process() {
-            const tw = parseInt(dom.targetW.value), th = parseInt(dom.targetH.value);
-            dom.cOri.width = dom.cDit.width = tw;
-            dom.cOri.height = dom.cDit.height = th;
+            if (!img.src) return;
+            const tw = parseInt(dom.targetW.value);
+            const th = parseInt(dom.targetH.value);
+            const clip = parseInt(dom.clip.value);
+            const cost = parseInt(dom.cost.value);
 
-            if (!img.src) {
-                // Draw grey placeholders
-                gOri.fillStyle = gDit.fillStyle = '#444';
-                gOri.fillRect(0, 0, tw, th);
-                gDit.fillRect(0, 0, tw, th);
-                gOri.fillStyle = gDit.fillStyle = '#666';
-                gOri.font = '20px sans-serif';
-                gOri.textAlign = gDit.textAlign = 'center';
-                gOri.fillText('No Image', tw/2, th/2);
-                gDit.fillText('No Image', tw/2, th/2);
-                return;
-            }
+            // 1. Resize/Crop logic
+            dom.cOri.width = tw;
+            dom.cOri.height = th;
+            dom.cDit.width = tw;
+            dom.cDit.height = th;
 
-            const sAsp = img.width / img.height, tAsp = tw / th;
-            let drawW, drawH, dx, dy;
-            
-            // Calculate scale to fit
             const scale = Math.min(tw / img.width, th / img.height);
-            drawW = img.width * scale;
-            drawH = img.height * scale;
-            dx = (tw - drawW) / 2;
-            dy = (th - drawH) / 2;
+            const nw = img.width * scale;
+            const nh = img.height * scale;
+            const ox = (tw - nw) / 2;
+            const oy = (th - nh) / 2;
 
-            // Fill with WHITE background first
             gOri.fillStyle = "white";
             gOri.fillRect(0, 0, tw, th);
-            
-            // Draw resized image centered
-            gOri.drawImage(img, 0, 0, img.width, img.height, dx, dy, drawW, drawH);
-            let idata = gOri.getImageData(0, 0, tw, th);
-            for (let i = 0; i < idata.data.length; i += 4) {
-                const g = 0.299*idata.data[i] + 0.587*idata.data[i+1] + 0.114*idata.data[i+2];
-                idata.data[i] = idata.data[i+1] = idata.data[i+2] = g;
+            gOri.drawImage(img, ox, oy, nw, nh);
+
+            // 2. Grayscale
+            const imageData = gOri.getImageData(0, 0, tw, th);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                data[i] = data[i+1] = data[i+2] = g;
             }
-            gOri.putImageData(idata, 0, 0);
 
-            let acData = new ImageData(new Uint8ClampedArray(idata.data), tw, th);
-            const acStats = applyAC(acData.data, tw, th);
-            let tpData = new ImageData(new Uint8ClampedArray(acData.data), tw, th);
-            
-            const layersMap = [0, 2, 4, 8, 16, 32, 64, 128, 256];
-            const layersVal = layersMap[dom.layers.value];
-            
-            const tpStats = applyTP(tpData.data, tw, th, layersVal, Number(dom.strength.value));
-            applyFS(tpData.data, tw, th);
-            for (let i = 0; i < tpData.data.length; i += 4) tpData.data[i+1] = tpData.data[i+2] = tpData.data[i];
-            gDit.putImageData(tpData, 0, 0);
-            dom.stats.innerHTML = `Clip: ${((acStats.ct)/(tw*th)*100).toFixed(1)}% | Str: ${tpStats.avg.toFixed(3)}`;
-        }
-
-        function clamp(v) { return Math.max(0, Math.min(255, v)); }
-        function applyAC(d, w, h) {
+            // 3. Weighted Approaching Auto-Contrast (W-Approaching)
             const hist = new Array(256).fill(0);
-            for (let i = 0; i < d.length; i += 4) hist[d[i] | 0]++;
-            const total = w * h, target = total * (dom.clip.value / 100), minT = total * 0.005;
-            let l = 0, r = 255, cb = 0, cw = 0, ct = 0, rb = total, rw = total;
-            while (l < r && ct < target) {
-                if (rw >= rb) { cw += hist[r]; rw -= hist[r]; ct += hist[r]; r--; }
-                else { cb += hist[l]; rb -= hist[l]; ct += hist[l]; l++; }
+            let sumValues = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const v = data[i] | 0;
+                hist[v]++;
+                sumValues += v;
             }
-            while (l < r && cb < minT) { cb += hist[l]; ct += hist[l]; l++; }
-            while (l < r && cw < minT) { cw += hist[r]; ct += hist[r]; r--; }
-            const sc = 255 / (r - l || 1);
-            for (let i = 0; i < d.length; i += 4) {
-                let v = d[i];
-                if (v <= l) v = 0; else if (v >= r) v = 255; else v = (v - l) * sc;
-                d[i] = d[i+1] = d[i+2] = clamp(v);
+            const avg = sumValues / (data.length / 4);
+            let totalPotentialDamage = 0;
+            for (let i = 0; i < 256; i++) {
+                totalPotentialDamage += hist[i] * Math.abs(i - avg);
             }
-            return { ct };
-        }
-        function applyTP(d, w, h, layers, userStr) {
-            const vals = [];
-            for (let i = 0; i < d.length; i += 4) { if (d[i] > 0 && d[i] < 255) vals.push(d[i]); }
-            if (!vals.length || layers <= 1) return { avg: 0 };
-            vals.sort((a, b) => a - b);
-            const thres = [];
-            for (let i = 1; i < layers; i++) thres.push(vals[Math.floor(vals.length * i / layers)]);
-            const step = 253 / (layers - 1);
-            let sum = 0, cnt = 0;
-            for (let i = 0; i < d.length; i += 4) {
-                const v = d[i]; if (v === 0 || v === 255) continue;
-                let idx = thres.findIndex(t => v < t);
-                if (idx === -1) idx = layers - 1;
-                const target = 1 + idx * step;
-                const str = (0.2 + 0.8 * (Math.abs(v - 128) / 128)) * userStr;
-                d[i] = d[i+1] = d[i+2] = clamp(v + str * (target - v));
-                sum += str; cnt++;
-            }
-            return { avg: sum / cnt };
-        }
-        function applyFS(d, w, h) {
-            for (let y = 0; y < h; y++) {
-                const ltr = y % 2 === 0;
-                for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
-                    const i = (y * w + x) * 4, old = d[i], nw = old < 128 ? 0 : 255, err = old - nw;
-                    d[i] = nw;
-                    const add = (nx, ny, f) => {
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-                            const j = (ny * w + nx) * 4;
-                            d[j] = clamp(d[j] + err * f);
-                        }
-                    };
-                    if (ltr) { add(x + 1, y, 7/16); add(x - 1, y + 1, 3/16); add(x, y + 1, 5/16); add(x + 1, y + 1, 1/16); }
-                    else { add(x - 1, y, 7/16); add(x + 1, y + 1, 3/16); add(x, y + 1, 5/16); add(x - 1, y + 1, 1/16); }
+
+            const total = tw * th;
+            const targetArea = total * (clip / 100);
+            const targetCost = totalPotentialDamage * (cost / 100);
+            const minTarget = total * 0.005;
+
+            let remBlack = total, remWhite = total;
+            let left = 0, right = 255;
+            let clippedBlack = 0, clippedWhite = 0, clippedTotal = 0, totalCost = 0;
+
+            while (left < right && totalCost < targetCost && clippedTotal < targetArea) {
+                if (remWhite >= remBlack) {
+                    const count = hist[right];
+                    const costVal = count * (255 - right);
+                    totalCost += costVal;
+                    clippedTotal += count;
+                    remWhite -= count;
+                    clippedWhite += count;
+                    right--;
+                } else {
+                    const count = hist[left];
+                    const costVal = count * left;
+                    totalCost += costVal;
+                    clippedTotal += count;
+                    remBlack -= count;
+                    clippedBlack += count;
+                    left++;
                 }
             }
+            // Safety
+            while (left < right && clippedBlack < minTarget) { clippedBlack += hist[left]; left++; }
+            while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
+
+            const acScale = 255 / (right - left || 1);
+            for (let i = 0; i < data.length; i += 4) {
+                let v = data[i];
+                if (v <= left) v = 0;
+                else if (v >= right) v = 255;
+                else v = (v - left) * acScale;
+                data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, v));
+            }
+
+            // 4. Burkes Dithering
+            for (let y = 0; y < th; y++) {
+                for (let x = 0; x < tw; x++) {
+                    const i = (y * tw + x) * 4;
+                    const old = data[i];
+                    const nw_val = old < 128 ? 0 : 255;
+                    const err = (old - nw_val) / 32;
+                    data[i] = data[i+1] = data[i+2] = nw_val;
+
+                    const add = (nx, ny, f) => {
+                        if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
+                            const j = (ny * tw + nx) * 4;
+                            const v = data[j] + err * f;
+                            const clamped = Math.max(0, Math.min(255, v));
+                            data[j] = data[j+1] = data[j+2] = clamped;
+                        }
+                    };
+
+                    add(x + 1, y,     8);
+                    add(x + 2, y,     4);
+                    add(x - 2, y + 1, 2);
+                    add(x - 1, y + 1, 4);
+                    add(x,     y + 1, 8);
+                    add(x + 1, y + 1, 4);
+                    add(x + 2, y + 1, 2);
+                }
+            }
+
+            gDit.putImageData(imageData, 0, 0);
+            dom.stats.textContent = `Original: ${img.width}x${img.height} | Processed: ${tw}x${th} | Range: [${left}, ${right}]`;
         }
 
         async function upload(e) {

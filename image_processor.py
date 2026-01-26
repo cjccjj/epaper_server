@@ -51,145 +51,109 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
         # User cheat: do not pad. If padding is needed, we drop this image.
         raise ValueError(f"Image requires {fill_ratio:.1%} padding, which exceeds {stretch_threshold:.1%} threshold. Dropping.")
 
-def apply_ac(data, clip_pct=30):
-    """Auto-Contrast logic ported from JS applyAC."""
+def apply_ac(data, clip_pct=40, cost_pct=10):
+    """Weighted Approaching Auto-Contrast logic ported from JS."""
     h, w = data.shape
     hist, _ = np.histogram(data, bins=256, range=(0, 256))
     
     total = w * h
-    target = total * (clip_pct / 100.0)
-    min_t = total * 0.005
+    avg = np.mean(data)
     
-    l, r = 0, 255
-    cb, cw, ct = 0, 0, 0
-    rb, rw = total, total
-    
-    while l < r and ct < target:
-        if rw >= rb:
-            cw += hist[r]
-            rw -= hist[r]
-            ct += hist[r]
-            r -= 1
-        else:
-            cb += hist[l]
-            rb -= hist[l]
-            ct += hist[l]
-            l += 1
-            
-    while l < r and cb < min_t:
-        cb += hist[l]
-        ct += hist[l]
-        l += 1
-    while l < r and cw < min_t:
-        cw += hist[r]
-        ct += hist[r]
-        r -= 1
+    # Calculate potential damage
+    total_potential_damage = 0
+    for i in range(256):
+        total_potential_damage += hist[i] * abs(i - avg)
         
-    sc = 255.0 / (r - l if r > l else 1)
+    target_area = total * (clip_pct / 100.0)
+    target_cost = total_potential_damage * (cost_pct / 100.0)
+    min_target = total * 0.005 # 0.5% safety clip
+    
+    rem_black = total
+    rem_white = total
+    left = 0
+    right = 255
+    clipped_black = 0
+    clipped_white = 0
+    clipped_total = 0
+    total_cost = 0
+    
+    while left < right and total_cost < target_cost and clipped_total < target_area:
+        if rem_white >= rem_black:
+            count = hist[right]
+            cost = count * (255 - right)
+            total_cost += cost
+            clipped_total += count
+            rem_white -= count
+            clipped_white += count
+            right -= 1
+        else:
+            count = hist[left]
+            cost = count * left
+            total_cost += cost
+            clipped_total += count
+            rem_black -= count
+            clipped_black += count
+            left += 1
+            
+    # Safety clips
+    while left < right and clipped_black < min_target:
+        clipped_black += hist[left]
+        left += 1
+    while left < right and clipped_white < min_target:
+        clipped_white += hist[right]
+        right -= 1
+        
+    scale = 255.0 / (right - left if right > left else 1)
     
     # Apply contrast
     data = data.astype(np.float32)
-    data = np.clip((data - l) * sc, 0, 255)
+    data = np.clip((data - left) * scale, 0, 255)
     return data.astype(np.uint8)
 
-def apply_tp(data, layers=32, user_str=0.0):
-    """Tone-Preserving adjustment logic ported from JS applyTP."""
-    if layers <= 1:
-        return data
-        
-    # Get values between 0 and 255 (exclusive)
-    vals = data[(data > 0) & (data < 255)]
-    if len(vals) == 0:
-        return data
-        
-    vals = np.sort(vals)
-    thres = []
-    for i in range(1, layers):
-        idx = int(len(vals) * i / layers)
-        thres.append(vals[idx])
-        
-    step = 253.0 / (layers - 1)
-    
-    # We'll do this pixel by pixel for now to match the JS logic exactly
-    # although a vectorized version would be faster.
+def apply_burkes(data):
+    """Burkes Dithering logic ported from JS."""
     h, w = data.shape
     out = data.astype(np.float32)
     
     for y in range(h):
         for x in range(w):
-            v = out[y, x]
-            if v == 0 or v == 255:
-                continue
-            
-            # Find threshold index
-            idx = -1
-            for i, t in enumerate(thres):
-                if v < t:
-                    idx = i
-                    break
-            
-            if idx == -1:
-                idx = layers - 1
-                
-            target = 1 + idx * step
-            str_val = (0.2 + 0.8 * (abs(v - 128.0) / 128.0)) * user_str
-            out[y, x] = np.clip(v + str_val * (target - v), 0, 255)
-            
-    return out.astype(np.uint8)
-
-def apply_fs(data):
-    """Floyd-Steinberg Dithering with serpentine scan logic ported from JS applyFS."""
-    h, w = data.shape
-    out = data.astype(np.float32)
-    
-    for y in range(h):
-        ltr = (y % 2 == 0)
-        x_range = range(w) if ltr else range(w - 1, -1, -1)
-        
-        for x in x_range:
             old_val = out[y, x]
             new_val = 0 if old_val < 128 else 255
-            err = old_val - new_val
+            err = (old_val - new_val) / 32.0
             out[y, x] = new_val
             
             def add_err(nx, ny, factor):
                 if 0 <= nx < w and 0 <= ny < h:
                     out[ny, nx] = np.clip(out[ny, nx] + err * factor, 0, 255)
             
-            if ltr:
-                add_err(x + 1, y, 7/16)
-                add_err(x - 1, y + 1, 3/16)
-                add_err(x, y + 1, 5/16)
-                add_err(x + 1, y + 1, 1/16)
-            else:
-                add_err(x - 1, y, 7/16)
-                add_err(x + 1, y + 1, 3/16)
-                add_err(x, y + 1, 5/16)
-                add_err(x - 1, y + 1, 1/16)
+            add_err(x + 1, y,     8)
+            add_err(x + 2, y,     4)
+            add_err(x - 2, y + 1, 2)
+            add_err(x - 1, y + 1, 4)
+            add_err(x,     y + 1, 8)
+            add_err(x + 1, y + 1, 4)
+            add_err(x + 2, y + 1, 2)
                 
     return out.astype(np.uint8)
 
-def process_and_dither(img, target_size=(400, 300), clip_pct=18, layers=32, strength=0.0, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
-    # Revert to only fit_resize as requested
+def process_and_dither(img, target_size=(400, 300), clip_pct=40, cost_pct=10, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
+    # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
     # 2. Convert to grayscale
     img = img.convert("L")
     data = np.array(img)
     
-    # 3. Apply Auto-Contrast
-    data = apply_ac(data, clip_pct)
+    # 3. Apply Weighted Approaching Auto-Contrast
+    data = apply_ac(data, clip_pct, cost_pct)
     
-    # 4. Apply Tone-Preserving adjustment
-    data = apply_tp(data, layers, strength)
+    # 4. Apply Burkes Dithering
+    data = apply_burkes(data)
     
-    # 5. Apply Floyd-Steinberg Dithering
-    data = apply_fs(data)
-    
-    # 6. Convert back to Pillow image (1-bit mode)
-    # FS result is 0 or 255, so we can convert directly to '1' mode
+    # 5. Convert back to Pillow image (1-bit mode)
     dithered_img = Image.fromarray(data).convert("1")
     return dithered_img
+
 
 def save_as_bmp(img, path):
     # Ensure directory exists if path contains one
