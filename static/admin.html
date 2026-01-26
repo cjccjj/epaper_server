@@ -664,17 +664,18 @@
             const dMode = dom.ditherMode.value;
             if (dMode === 'fs4g') {
                 // Floyd-Steinberg 4-Level Greyscale (4G)
-                // Palette: 0, 85, 170, 255
+                // Adjusted palette for better e-paper visibility: 0, 100, 200, 255
+                // Thresholds are midpoints: 50, 150, 227
                 for (let y = startY; y < endY; y++) {
                     for (let x = startX; x < endX; x++) {
                         const i = (y * tw + x) * 4;
                         const old = data[i];
                         
-                        // Find closest 4G value
+                        // Find closest 4G value using adjusted thresholds
                         let nw_val;
-                        if (old < 42) nw_val = 0;
-                        else if (old < 128) nw_val = 85;
-                        else if (old < 213) nw_val = 170;
+                        if (old < 50) nw_val = 0;
+                        else if (old < 150) nw_val = 100;
+                        else if (old < 227) nw_val = 200;
                         else nw_val = 255;
                         
                         const err = old - nw_val;
