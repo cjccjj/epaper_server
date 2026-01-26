@@ -192,13 +192,13 @@
                     <div class="control-row">
                         <div class="control-group">
                             <label>Clip %</label>
-                            <input type="range" id="clip" min="0" max="60" value="40">
-                            <span class="val"><span id="clipValue">40</span>%</span>
+                            <input type="range" id="clip" min="0" max="60" value="22">
+                            <span class="val"><span id="clipValue">22</span>%</span>
                         </div>
                         <div class="control-group">
                             <label>Cost %</label>
-                            <input type="range" id="cost" min="0" max="60" value="10">
-                            <span class="val"><span id="costValue">10</span>%</span>
+                            <input type="range" id="cost" min="0" max="60" value="6">
+                            <span class="val"><span id="costValue">6</span>%</span>
                         </div>
                         <div class="control-group hidden">
                             <label>Strength</label>
@@ -589,23 +589,37 @@
             }
 
             // 3. Weighted Approaching Auto-Contrast (W-Approaching)
+            // Calculate histogram only for the actual image area to match dithering.html
             const hist = new Array(256).fill(0);
             let sumValues = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                const v = data[i] | 0;
-                hist[v]++;
-                sumValues += v;
+            let pixelCount = 0;
+
+            // Image area bounds
+            const startX = Math.floor(ox);
+            const startY = Math.floor(oy);
+            const endX = Math.floor(ox + nw);
+            const endY = Math.floor(oy + nh);
+
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    const i = (y * tw + x) * 4;
+                    const v = data[i] | 0;
+                    hist[v]++;
+                    sumValues += v;
+                    pixelCount++;
+                }
             }
-            const avg = sumValues / (data.length / 4);
+
+            const avg = sumValues / (pixelCount || 1);
             let totalPotentialDamage = 0;
             for (let i = 0; i < 256; i++) {
                 totalPotentialDamage += hist[i] * Math.abs(i - avg);
             }
 
-            const total = tw * th;
+            const total = pixelCount; // Use actual image pixels instead of tw * th
             const targetArea = total * (clip / 100);
             const targetCost = totalPotentialDamage * (cost / 100);
-            const minTarget = total * 0.005;
+            const minTarget = total * 0.005; // 0.5% safety clip
 
             let remBlack = total, remWhite = total;
             let left = 0, right = 255;
@@ -635,6 +649,7 @@
             while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
 
             const acScale = 255 / (right - left || 1);
+            // Apply contrast to the whole canvas (padding stays white because 255 >= right)
             for (let i = 0; i < data.length; i += 4) {
                 let v = data[i];
                 if (v <= left) v = 0;
@@ -644,8 +659,9 @@
             }
 
             // 4. Burkes Dithering
-            for (let y = 0; y < th; y++) {
-                for (let x = 0; x < tw; x++) {
+            // Dither ONLY the image area, leave padding as is (white)
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
                     const i = (y * tw + x) * 4;
                     const old = data[i];
                     const nw_val = old < 128 ? 0 : 255;
@@ -653,7 +669,8 @@
                     data[i] = data[i+1] = data[i+2] = nw_val;
 
                     const add = (nx, ny, f) => {
-                        if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
+                        // Keep error diffusion within the image area to match dithering.html
+                        if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
                             const j = (ny * tw + nx) * 4;
                             const v = data[j] + err * f;
                             const clamped = Math.max(0, Math.min(255, v));
