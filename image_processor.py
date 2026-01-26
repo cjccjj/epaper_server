@@ -142,7 +142,11 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     
     # 2. Convert to grayscale
     img = img.convert("L")
-    data = np.array(img)
+    data = np.array(img).astype(np.float32)
+    
+    # Apply Gamma 2.2 Correction
+    data = 255.0 * np.power(data / 255.0, 1.0 / 2.2)
+    data = data.astype(np.uint8)
     
     # 3. Apply Weighted Approaching Auto-Contrast
     data = apply_ac(data, clip_pct, cost_pct)
