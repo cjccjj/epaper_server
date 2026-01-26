@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dithering Pipeline Comparison</title>
+
+<style>
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding: 20px;
+    background: #eef2f5;
+    color: #333;
+    margin: 0;
+}
+.global-controls {
+    background: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.global-controls h3 { margin: 0; color: #2c3e50; font-size: 1.1em; }
+.control-group { display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+.control-group label { font-weight: 600; }
+.control-group input[type="number"] { width: 55px; padding: 2px 5px; border: 1px solid #ccc; border-radius: 4px; }
+
+.comparison-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    align-items: start;
+}
+
+.pipeline-column {
+    background: #fff;
+    padding: 8px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.pipeline-column h2 { 
+    margin: 0; 
+    padding-bottom: 4px; 
+    border-bottom: 1px solid #eee;
+    color: #34495e;
+    font-size: 1em;
+}
+
+.settings-panel {
+    background: #f9fbff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #dce6f0;
+    width: 100%; /* Take full width of column */
+    height: auto;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.control-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.control-row label, .none-placeholder {
+    flex: 1;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7em;
+    font-weight: 600;
+    height: 22px; /* Single line height */
+    white-space: nowrap;
+}
+.none-placeholder {
+    color: #bdc3c7;
+    font-style: italic;
+    justify-content: center;
+    border: 1px dashed #dce6f0;
+    border-radius: 3px;
+}
+.control-row select, .control-row input[type="range"] {
+    flex: 1;
+    height: 16px;
+    font-size: 0.9em;
+    margin: 0;
+}
+.control-row input[type="range"] {
+    min-width: 50px;
+}
+
+.previews-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.canvas-wrapper {
+    text-align: center;
+}
+.canvas-wrapper h4 {
+    margin: 0 0 2px 0;
+    font-size: 0.7em;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+canvas {
+    border: 1px solid #eee;
+    border-radius: 4px;
+    max-width: 100%;
+    height: auto;
+    background: #fafafa;
+}
+
+.stats-panel {
+    font-size: 0.7em;
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stats-panel strong { color: #3498db; }
+
+input[type="file"] {
+    padding: 8px;
+    border: 1px dashed #3498db;
+    border-radius: 6px;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="global-controls">
+    <h3>Dithering Pipeline Comparison</h3>
+    
+    <div class="control-group">
+        <label>Upload:</label>
+        <input type="file" id="upload" accept="image/*">
+    </div>
+
+    <div class="control-group">
+        <label>Max Width:</label>
+        <input type="number" id="maxWidth" value="400" min="100" max="1200">
+    </div>
+    
+    <div class="control-group">
+        <label>Max Height:</label>
+        <input type="number" id="maxHeight" value="300" min="100" max="1200">
+    </div>
+</div>
+
+<div class="comparison-container">
+    <!-- PIPELINE A -->
+    <div id="pipelineA" class="pipeline-column">
+        <h2>Pipeline A</h2>
+        
+        <div class="settings-panel">
+            <div class="control-row">
+                <label>
+                    Contrast:
+                    <select class="ac-method">
+                        <option value="none">None</option>
+                        <option value="standard" selected>Standard</option>
+                        <option value="approaching">Approaching</option>
+                        <option value="w-approaching">W-Approaching</option>
+                    </select>
+                </label>
+                <label>
+                    Dither:
+                    <select class="dither-method">
+                        <option value="fs">FS</option>
+                        <option value="atkinson">Atkinson</option>
+                        <option value="burkes">Burkes</option>
+                    </select>
+                </label>
+            </div>
+            
+            <div class="control-row">
+                <div class="none-placeholder" style="display: none;">(No adjustments)</div>
+                <label class="clip-label" title="Area Clip Target">
+                    Clip: <span class="clip-val">40</span>%
+                    <input type="range" class="clip-slider" min="0" max="60" value="40">
+                </label>
+                <label class="cost-label" title="Brightness Cost Target">
+                    Cost: <span class="cost-val">10</span>%
+                    <input type="range" class="cost-slider" min="0" max="60" value="10">
+                </label>
+            </div>
+        </div>
+
+        <div class="stats-panel">No image loaded</div>
+
+        <div class="previews-container">
+            <div class="canvas-wrapper">
+                <h4>Original Gray</h4>
+                <canvas class="c-gray-ori"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Auto-Contrast</h4>
+                <canvas class="c-gray-ac"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Dithered</h4>
+                <canvas class="c-dither"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- PIPELINE B -->
+    <div id="pipelineB" class="pipeline-column">
+        <h2>Pipeline B</h2>
+        
+        <div class="settings-panel">
+            <div class="control-row">
+                <label>
+                    Contrast:
+                    <select class="ac-method">
+                        <option value="none">None</option>
+                        <option value="standard">Standard</option>
+                        <option value="approaching">Approaching</option>
+                        <option value="w-approaching" selected>W-Approaching</option>
+                    </select>
+                </label>
+                <label>
+                    Dither:
+                    <select class="dither-method">
+                        <option value="fs">FS</option>
+                        <option value="atkinson">Atkinson</option>
+                        <option value="burkes">Burkes</option>
+                    </select>
+                </label>
+            </div>
+            
+            <div class="control-row">
+                <div class="none-placeholder" style="display: none;">(No adjustments)</div>
+                <label class="clip-label" title="Area Clip Target">
+                    Clip: <span class="clip-val">40</span>%
+                    <input type="range" class="clip-slider" min="0" max="60" value="40">
+                </label>
+                <label class="cost-label" title="Brightness Cost Target">
+                    Cost: <span class="cost-val">10</span>%
+                    <input type="range" class="cost-slider" min="0" max="60" value="10">
+                </label>
+            </div>
+        </div>
+
+        <div class="stats-panel">No image loaded</div>
+
+        <div class="previews-container">
+            <div class="canvas-wrapper">
+                <h4>Original Gray</h4>
+                <canvas class="c-gray-ori"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Auto-Contrast</h4>
+                <canvas class="c-gray-ac"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Dithered</h4>
+                <canvas class="c-dither"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- PIPELINE C -->
+    <div id="pipelineC" class="pipeline-column">
+        <h2>Pipeline C</h2>
+        
+        <div class="settings-panel">
+            <div class="control-row">
+                <label>
+                    Contrast:
+                    <select class="ac-method">
+                        <option value="none">None</option>
+                        <option value="standard">Standard</option>
+                        <option value="approaching" selected>Approaching</option>
+                        <option value="w-approaching">W-Approaching</option>
+                    </select>
+                </label>
+                <label>
+                    Dither:
+                    <select class="dither-method">
+                        <option value="fs">FS</option>
+                        <option value="atkinson">Atkinson</option>
+                        <option value="burkes">Burkes</option>
+                    </select>
+                </label>
+            </div>
+            
+            <div class="control-row">
+                <div class="none-placeholder" style="display: none;">(No adjustments)</div>
+                <label class="clip-label" title="Area Clip Target">
+                    Clip: <span class="clip-val">40</span>%
+                    <input type="range" class="clip-slider" min="0" max="60" value="40">
+                </label>
+                <label class="cost-label" title="Brightness Cost Target">
+                    Cost: <span class="cost-val">10</span>%
+                    <input type="range" class="cost-slider" min="0" max="60" value="10">
+                </label>
+            </div>
+        </div>
+
+        <div class="stats-panel">No image loaded</div>
+
+        <div class="previews-container">
+            <div class="canvas-wrapper">
+                <h4>Original Gray</h4>
+                <canvas class="c-gray-ori"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Auto-Contrast</h4>
+                <canvas class="c-gray-ac"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h4>Dithered</h4>
+                <canvas class="c-dither"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ============================================================
+   MODULAR PROCESSING ENGINE
+   ============================================================ */
+const MIN_CLIP_PERCENT = 0.5;
+
+const Processor = {
+    clamp(v) { return Math.max(0, Math.min(255, v)); },
+
+    grayscale(data) {
+        for (let i = 0; i < data.length; i += 4) {
+            const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+            data[i] = data[i+1] = data[i+2] = g;
+        }
+    },
+
+    getHistogram(data) {
+        const hist = new Array(256).fill(0);
+        let sumValues = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const v = data[i] | 0;
+            hist[v]++;
+            sumValues += v;
+        }
+        return { hist, avg: sumValues / (data.length / 4) };
+    },
+
+    calculatePotentialDamage(hist, avg) {
+        let total = 0;
+        for (let i = 0; i < 256; i++) {
+            total += hist[i] * Math.abs(i - avg);
+        }
+        return total;
+    },
+
+    applyScale(data, left, right) {
+        const scale = 255 / (right - left || 1);
+        for (let i = 0; i < data.length; i += 4) {
+            let v = data[i];
+            if (v <= left) v = 0;
+            else if (v >= right) v = 255;
+            else v = (v - left) * scale;
+            data[i] = data[i+1] = data[i+2] = this.clamp(v);
+        }
+    },
+
+    autoContrast(data, w, h, method, areaPercent, costPercent, hist, totalPotentialDamage) {
+        const total = w * h;
+        const targetArea = total * (areaPercent / 100);
+        const targetCost = totalPotentialDamage * (costPercent / 100);
+        const minTarget = total * (MIN_CLIP_PERCENT / 100);
+
+        let remBlack = total, remWhite = total;
+        let left = 0, right = 255;
+        let clippedBlack = 0, clippedWhite = 0, clippedTotal = 0, totalCost = 0;
+
+        if (method === 'none') {
+            return { left: 0, right: 255 };
+        }
+
+        if (method === 'standard') {
+            const halfTarget = targetArea / 2;
+            while (left < right && clippedBlack < halfTarget) {
+                clippedBlack += hist[left];
+                left++;
+            }
+            while (left < right && clippedWhite < halfTarget) {
+                clippedWhite += hist[right];
+                right--;
+            }
+        } else if (method === 'approaching') {
+            while (left < right && clippedTotal < targetArea) {
+                if (remWhite >= remBlack) {
+                    const count = hist[right];
+                    clippedWhite += count;
+                    clippedTotal += count;
+                    remWhite -= count;
+                    right--;
+                } else {
+                    const count = hist[left];
+                    clippedBlack += count;
+                    clippedTotal += count;
+                    remBlack -= count;
+                    left++;
+                }
+            }
+        } else if (method === 'w-approaching') {
+            while (left < right && totalCost < targetCost && clippedTotal < targetArea) {
+                if (remWhite >= remBlack) {
+                    const count = hist[right];
+                    const cost = count * (255 - right);
+                    totalCost += cost;
+                    clippedTotal += count;
+                    remWhite -= count;
+                    clippedWhite += count;
+                    right--;
+                } else {
+                    const count = hist[left];
+                    const cost = count * left;
+                    totalCost += cost;
+                    clippedTotal += count;
+                    remBlack -= count;
+                    clippedBlack += count;
+                    left++;
+                }
+            }
+        }
+
+        // Safety
+        while (left < right && clippedBlack < minTarget) { clippedBlack += hist[left]; left++; }
+        while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
+
+        this.applyScale(data, left, right);
+        return { left, right };
+    },
+
+    ditherFS(d, w, h) {
+        for (let y = 0; y < h; y++) {
+            const ltr = y % 2 === 0;
+            for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
+                const i = (y * w + x) * 4;
+                const old = d[i];
+                const nw = old < 128 ? 0 : 255;
+                const err = old - nw;
+                d[i] = nw;
+                d[i+1] = nw;
+                d[i+2] = nw;
+
+                const add = (nx, ny, f) => {
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const j = (ny * w + nx) * 4;
+                        const v = d[j] + err * f;
+                        d[j] = d[j+1] = d[j+2] = this.clamp(v);
+                    }
+                };
+
+                if (ltr) {
+                    add(x + 1, y,     7 / 16);
+                    add(x - 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x + 1, y + 1, 1 / 16);
+                } else {
+                    add(x - 1, y,     7 / 16);
+                    add(x + 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x - 1, y + 1, 1 / 16);
+                }
+            }
+        }
+    },
+
+    ditherAtkinson(d, w, h) {
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const old = d[i];
+                const nw = old < 128 ? 0 : 255;
+                const err = (old - nw) / 8; // Atkinson uses 1/8 for all weights
+                d[i] = d[i+1] = d[i+2] = nw;
+
+                const add = (nx, ny) => {
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const j = (ny * w + nx) * 4;
+                        const v = d[j] + err;
+                        d[j] = d[j+1] = d[j+2] = this.clamp(v);
+                    }
+                };
+
+                add(x + 1, y);
+                add(x + 2, y);
+                add(x - 1, y + 1);
+                add(x,     y + 1);
+                add(x + 1, y + 1);
+                add(x,     y + 2);
+            }
+        }
+    },
+
+    ditherBurkes(d, w, h) {
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const old = d[i];
+                const nw = old < 128 ? 0 : 255;
+                const err = (old - nw) / 32;
+                d[i] = d[i+1] = d[i+2] = nw;
+
+                const add = (nx, ny, f) => {
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const j = (ny * w + nx) * 4;
+                        const v = d[j] + err * f;
+                        d[j] = d[j+1] = d[j+2] = this.clamp(v);
+                    }
+                };
+
+                add(x + 1, y,     8);
+                add(x + 2, y,     4);
+                add(x - 2, y + 1, 2);
+                add(x - 1, y + 1, 4);
+                add(x,     y + 1, 8);
+                add(x + 1, y + 1, 4);
+                add(x + 2, y + 1, 2);
+            }
+        }
+    },
+
+    getUnifiedMetrics(hist, left, right, totalPixels, totalPotentialDamage) {
+        let clippedBlack = 0, costBlack = 0;
+        for (let i = 0; i < left; i++) {
+            clippedBlack += hist[i];
+            costBlack += hist[i] * i;
+        }
+        let clippedWhite = 0, costWhite = 0;
+        for (let i = 255; i > right; i--) {
+            clippedWhite += hist[i];
+            costWhite += hist[i] * (255 - i);
+        }
+
+        const areaTotal = ((clippedBlack + clippedWhite) / totalPixels * 100).toFixed(1);
+        const areaB = (clippedBlack / totalPixels * 100).toFixed(1);
+        const areaW = (clippedWhite / totalPixels * 100).toFixed(1);
+        const brightTotal = totalPotentialDamage > 0 ? ((costBlack + costWhite) / totalPotentialDamage * 100).toFixed(1) : "0.0";
+        const brightB = totalPotentialDamage > 0 ? (costBlack / totalPotentialDamage * 100).toFixed(1) : "0.0";
+        const brightW = totalPotentialDamage > 0 ? (costWhite / totalPotentialDamage * 100).toFixed(1) : "0.0";
+
+        return { areaTotal, areaB, areaW, brightTotal, brightB, brightW, left, right };
+    }
+};
+
+/* ============================================================
+   PIPELINE CLASS
+   ============================================================ */
+class DitheringPipeline {
+    constructor(id) {
+        this.container = document.getElementById(id);
+        
+        // Settings
+        this.methodSel = this.container.querySelector('.ac-method');
+        this.clipSlider = this.container.querySelector('.clip-slider');
+        this.costSlider = this.container.querySelector('.cost-slider');
+        this.ditherSel = this.container.querySelector('.dither-method');
+        this.clipValLabel = this.container.querySelector('.clip-val');
+        this.costValLabel = this.container.querySelector('.cost-val');
+        this.clipLabel = this.container.querySelector('.clip-label');
+        this.costLabel = this.container.querySelector('.cost-label');
+        this.nonePlaceholder = this.container.querySelector('.none-placeholder');
+        
+        // Previews
+        this.cGrayOri = this.container.querySelector('.c-gray-ori');
+        this.cGrayAC  = this.container.querySelector('.c-gray-ac');
+        this.cDither  = this.container.querySelector('.c-dither');
+        this.gGrayOri = this.cGrayOri.getContext('2d');
+        this.gGrayAC  = this.cGrayAC.getContext('2d');
+        this.gDither  = this.cDither.getContext('2d');
+        
+        this.statsDiv = this.container.querySelector('.stats-panel');
+
+        this.initEvents();
+        this.updateVisibility();
+    }
+
+    initEvents() {
+        [this.methodSel, this.clipSlider, this.costSlider, this.ditherSel].forEach(el => {
+            el.addEventListener('input', () => {
+                this.updateLabels();
+                this.updateVisibility();
+                this.run();
+            });
+        });
+    }
+
+    updateLabels() {
+        this.clipValLabel.textContent = this.clipSlider.value;
+        this.costValLabel.textContent = this.costSlider.value;
+    }
+
+    updateVisibility() {
+        const method = this.methodSel.value;
+        const isNone = method === 'none';
+        const isWApproaching = method === 'w-approaching';
+        
+        this.nonePlaceholder.style.display = isNone ? 'flex' : 'none';
+        this.clipLabel.style.display = isNone ? 'none' : 'flex';
+        this.costLabel.style.display = isWApproaching ? 'flex' : 'none';
+    }
+
+    run() {
+        if (!AppState.sourceImg) return;
+        
+        const { w, h } = AppState;
+        [this.cGrayOri, this.cGrayAC, this.cDither].forEach(c => { c.width = w; c.height = h; });
+
+        // 1. Grayscale
+        this.gGrayOri.drawImage(AppState.sourceImg, 0, 0, w, h);
+        let grayData = this.gGrayOri.getImageData(0, 0, w, h);
+        Processor.grayscale(grayData.data);
+        this.gGrayOri.putImageData(grayData, 0, 0);
+
+        // Histogram & Potential Damage (calculated once per run or once per image? 
+        // Here we do it per run for simplicity, but it's identical for both pipelines)
+        const { hist, avg } = Processor.getHistogram(grayData.data);
+        const totalPotentialDamage = Processor.calculatePotentialDamage(hist, avg);
+
+        // 2. Auto-Contrast
+        let acData = new ImageData(new Uint8ClampedArray(grayData.data), w, h);
+        const acStats = Processor.autoContrast(
+            acData.data, w, h, 
+            this.methodSel.value, 
+            Number(this.clipSlider.value), 
+            Number(this.costSlider.value),
+            hist, totalPotentialDamage
+        );
+        this.gGrayAC.putImageData(acData, 0, 0);
+
+        // 3. Dithering
+        let ditherData = new ImageData(new Uint8ClampedArray(acData.data), w, h);
+        const dMethod = this.ditherSel.value;
+        if (dMethod === 'fs') {
+            Processor.ditherFS(ditherData.data, w, h);
+        } else if (dMethod === 'atkinson') {
+            Processor.ditherAtkinson(ditherData.data, w, h);
+        } else if (dMethod === 'burkes') {
+            Processor.ditherBurkes(ditherData.data, w, h);
+        }
+        this.gDither.putImageData(ditherData, 0, 0);
+
+        // 4. Stats
+        this.updateStats(hist, acStats.left, acStats.right, w * h, totalPotentialDamage);
+    }
+
+    updateStats(hist, left, right, totalPixels, totalPotentialDamage) {
+        const m = Processor.getUnifiedMetrics(hist, left, right, totalPixels, totalPotentialDamage);
+        const methodText = this.methodSel.options[this.methodSel.selectedIndex].text;
+        this.statsDiv.innerHTML = `
+            <strong>${methodText}</strong> | 
+            Area: ${m.areaTotal}% (B:${m.areaB}, W:${m.areaW}) | 
+            Bright: ${m.brightTotal}% (B:${m.brightB}, W:${m.brightW}) | 
+            Range: [${m.left}, ${m.right}]
+        `;
+    }
+}
+
+/* ============================================================
+   APPLICATION STATE & GLOBAL LOGIC
+   ============================================================ */
+const AppState = {
+    sourceImg: null,
+    w: 0,
+    h: 0,
+    pipelines: []
+};
+
+const uploadInput = document.getElementById('upload');
+const maxWidthInput = document.getElementById('maxWidth');
+const maxHeightInput = document.getElementById('maxHeight');
+
+function init() {
+    AppState.pipelines.push(new DitheringPipeline('pipelineA'));
+    AppState.pipelines.push(new DitheringPipeline('pipelineB'));
+    AppState.pipelines.push(new DitheringPipeline('pipelineC'));
+    
+    uploadInput.addEventListener('change', handleUpload);
+    [maxWidthInput, maxHeightInput].forEach(el => el.addEventListener('change', () => {
+        if (AppState.sourceImg) {
+            calculateDimensions();
+            AppState.pipelines.forEach(p => p.run());
+        }
+    }));
+}
+
+function handleUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+            AppState.sourceImg = img;
+            calculateDimensions();
+            AppState.pipelines.forEach(p => p.run());
+        };
+        img.src = ev.target.result;
+    };
+    r.readAsDataURL(file);
+}
+
+function calculateDimensions() {
+    let w = AppState.sourceImg.width;
+    let h = AppState.sourceImg.height;
+    const maxW = Number(maxWidthInput.value);
+    const maxH = Number(maxHeightInput.value);
+    const s = Math.min(maxW / w, maxH / h, 1);
+    AppState.w = Math.round(w * s);
+    AppState.h = Math.round(h * s);
+}
+
+init();
+</script>
+
+</body>
+</html>
