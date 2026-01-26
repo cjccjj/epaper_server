@@ -200,10 +200,12 @@
                             <input type="range" id="cost" min="0" max="60" value="6">
                             <span class="val"><span id="costValue">6</span>%</span>
                         </div>
-                        <div class="control-group hidden">
-                            <label>Strength</label>
-                            <input type="range" id="strength" min="0" max="1" step="0.05" value="0">
-                            <span class="val" id="strengthValue">0</span>
+                        <div class="control-group">
+                            <label>Dither</label>
+                            <select id="ditherMode">
+                                <option value="burkes">Burkes (BW)</option>
+                                <option value="fs4g">4G FS (Gray)</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -265,7 +267,7 @@
             targetH: document.getElementById('targetH'),
             clip: document.getElementById('clip'),
             cost: document.getElementById('cost'),
-            strength: document.getElementById('strength'),
+            ditherMode: document.getElementById('ditherMode'),
             stats: document.getElementById('stats'),
             cOri: document.getElementById('cOriginal'),
             cDit: document.getElementById('cDither'),
@@ -309,13 +311,15 @@
                 });
             });
 
-            [dom.clip, dom.cost, dom.strength].forEach(i => {
+            [dom.clip, dom.cost].forEach(i => {
                 i.addEventListener('input', () => {
                     let displayVal = i.value;
                     document.getElementById(i.id+'Value').textContent = displayVal;
                     process();
                 });
             });
+
+            dom.ditherMode.addEventListener('change', process);
 
             [dom.targetW, dom.targetH].forEach(i => i.addEventListener('change', process));
 
@@ -656,33 +660,68 @@
                 data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, v));
             }
 
-            // 4. Burkes Dithering
-            // Dither ONLY the image area, leave padding as is (white)
-            for (let y = startY; y < endY; y++) {
-                for (let x = startX; x < endX; x++) {
-                    const i = (y * tw + x) * 4;
-                    const old = data[i];
-                    const nw_val = old < 128 ? 0 : 255;
-                    const err = (old - nw_val) / 32;
-                    data[i] = data[i+1] = data[i+2] = nw_val;
+            // 4. Dithering
+            const dMode = dom.ditherMode.value;
+            if (dMode === 'fs4g') {
+                // Floyd-Steinberg 4-Level Greyscale (4G)
+                // Palette: 0, 85, 170, 255
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const i = (y * tw + x) * 4;
+                        const old = data[i];
+                        
+                        // Find closest 4G value
+                        let nw_val;
+                        if (old < 42) nw_val = 0;
+                        else if (old < 128) nw_val = 85;
+                        else if (old < 213) nw_val = 170;
+                        else nw_val = 255;
+                        
+                        const err = old - nw_val;
+                        data[i] = data[i+1] = data[i+2] = nw_val;
 
-                    const add = (nx, ny, f) => {
-                        // Keep error diffusion within the image area to match dithering.html
-                        if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
-                            const j = (ny * tw + nx) * 4;
-                            const v = data[j] + err * f;
-                            const clamped = Math.max(0, Math.min(255, v));
-                            data[j] = data[j+1] = data[j+2] = clamped;
-                        }
-                    };
+                        const add = (nx, ny, f) => {
+                            if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
+                                const j = (ny * tw + nx) * 4;
+                                const v = data[j] + err * f;
+                                const clamped = Math.max(0, Math.min(255, v));
+                                data[j] = data[j+1] = data[j+2] = clamped;
+                            }
+                        };
 
-                    add(x + 1, y,     8);
-                    add(x + 2, y,     4);
-                    add(x - 2, y + 1, 2);
-                    add(x - 1, y + 1, 4);
-                    add(x,     y + 1, 8);
-                    add(x + 1, y + 1, 4);
-                    add(x + 2, y + 1, 2);
+                        add(x + 1, y,     7 / 16);
+                        add(x - 1, y + 1, 3 / 16);
+                        add(x,     y + 1, 5 / 16);
+                        add(x + 1, y + 1, 1 / 16);
+                    }
+                }
+            } else {
+                // Default: Burkes BW Dithering
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const i = (y * tw + x) * 4;
+                        const old = data[i];
+                        const nw_val = old < 128 ? 0 : 255;
+                        const err = (old - nw_val) / 32;
+                        data[i] = data[i+1] = data[i+2] = nw_val;
+
+                        const add = (nx, ny, f) => {
+                            if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
+                                const j = (ny * tw + nx) * 4;
+                                const v = data[j] + err * f;
+                                const clamped = Math.max(0, Math.min(255, v));
+                                data[j] = data[j+1] = data[j+2] = clamped;
+                            }
+                        };
+
+                        add(x + 1, y,     8);
+                        add(x + 2, y,     4);
+                        add(x - 2, y + 1, 2);
+                        add(x - 1, y + 1, 4);
+                        add(x,     y + 1, 8);
+                        add(x + 1, y + 1, 4);
+                        add(x + 2, y + 1, 2);
+                    }
                 }
             }
 
