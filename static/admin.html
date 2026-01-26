@@ -205,6 +205,7 @@
                             <select id="ditherMode">
                                 <option value="burkes">Burkes (BW)</option>
                                 <option value="fs4g">4G FS (Gray)</option>
+                                <option value="nd4g">4G ND (Gray)</option>
                             </select>
                         </div>
                     </div>
@@ -662,7 +663,25 @@
 
             // 4. Dithering
             const dMode = dom.ditherMode.value;
-            if (dMode === 'fs4g') {
+            if (dMode === 'nd4g') {
+                // No Dithering 4-Level Greyscale (4G ND)
+                // Linear palette: 0, 85, 170, 255
+                // Thresholds are midpoints: 42, 128, 213
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const i = (y * tw + x) * 4;
+                        const old = data[i];
+                        
+                        let nw_val;
+                        if (old < 42) nw_val = 0;
+                        else if (old < 128) nw_val = 85;
+                        else if (old < 213) nw_val = 170;
+                        else nw_val = 255;
+                        
+                        data[i] = data[i+1] = data[i+2] = nw_val;
+                    }
+                }
+            } else if (dMode === 'fs4g') {
                 // Floyd-Steinberg 4-Level Greyscale (4G)
                 // Hardware-specific palette: 0, 30, 110, 255
                 // Thresholds are midpoints: 15, 70, 183
