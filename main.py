@@ -619,10 +619,10 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
         # Convert to 1-bit BMP using Pillow to ensure 0=black, 1=white
         from PIL import Image
         with Image.open(temp_path) as img:
-            # The canvas upload is already dithered (0,0,0 and 255,255,255)
-            # convert("1") will map 0 to 0 and 255 to 1
+            # The canvas upload is already dithered (either 1-bit or 4-level grey)
+            # convert("L") preserves greyscale levels for 4G FS mode
             bmp_path = os.path.splitext(file_path)[0] + ".bmp"
-            img.convert("1").save(bmp_path, "BMP")
+            img.convert("L").save(bmp_path, "BMP")
             filename = os.path.basename(bmp_path)
         
         # Clean up temp file
