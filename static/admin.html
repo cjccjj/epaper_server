@@ -235,6 +235,10 @@
                         <label>Subreddit</label>
                         <input type="text" id="redditSub" placeholder="e.g. memes">
                     </div>
+                    <div class="config-group">
+                        <label>Show Title</label>
+                        <input type="checkbox" id="redditShowTitle" style="width: auto;">
+                    </div>
                     <div id="redditStatus" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
                         Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">3</span> hours
                     </div>
@@ -281,6 +285,7 @@
             overlay: document.getElementById('overlay'),
             overlayImg: document.getElementById('overlayImg'),
             redditSub: document.getElementById('redditSub'),
+            redditShowTitle: document.getElementById('redditShowTitle'),
             redditPreview: document.getElementById('redditPreview'),
             fetchNowBtn: document.getElementById('fetchNowBtn')
         };
@@ -396,7 +401,8 @@
                 
                 // 2. Trigger fetch with current config
                 const config = {
-                    subreddit: dom.redditSub.value
+                    subreddit: dom.redditSub.value,
+                    show_titles: dom.redditShowTitle.checked
                 };
 
                 const res = await fetch('/admin/reddit/fetch_now', { 
@@ -429,7 +435,8 @@
 
         async function saveRedditConfig(showAlert = true) {
             const config = {
-                subreddit: dom.redditSub.value
+                subreddit: dom.redditSub.value,
+                show_titles: dom.redditShowTitle.checked
             };
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.reddit_config = config;
@@ -553,6 +560,7 @@
             // Update Reddit Config inputs
             if (d.reddit_config) {
                 dom.redditSub.value = d.reddit_config.subreddit || 'memes';
+                dom.redditShowTitle.checked = d.reddit_config.show_titles || false;
             }
         }
 

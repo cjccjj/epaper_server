@@ -39,7 +39,10 @@ REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
 reddit_global_cache = {
     "posts": [], 
     "last_update": None, 
-    "config": {"subreddit": "memes"},
+    "config": {
+        "subreddit": "memes",
+        "show_titles": False
+    },
     "rate_hours": 3
 }
 
@@ -317,10 +320,12 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                         
                         try:
                             # Test image processing
+                            title_to_overlay = entry.title if reddit_global_cache["config"].get("show_titles") else None
                             await asyncio.to_thread(
                                 image_processor.process_image_url, 
                                 img_url, filepath,
-                                resize_mode='fit'
+                                resize_mode='fit',
+                                title=title_to_overlay
                             )
                             
                             all_posts.append({
@@ -347,7 +352,7 @@ async def refresh_global_reddit_cache(subreddit="memes"):
             # Atomically update global cache after successful fetch loop
             reddit_global_cache["posts"] = all_posts
             reddit_global_cache["last_update"] = datetime.datetime.now()
-            reddit_global_cache["config"] = {"subreddit": subreddit}
+            reddit_global_cache["config"]["subreddit"] = subreddit
             save_reddit_cache()
             
             # Cleanup orphaned files: ALL reddit_*.bmp files on disk that are not in the new cache
@@ -585,14 +590,16 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
 async def fetch_reddit_now(config: dict = Body(...), db: Session = Depends(get_db)):
     """Manually trigger a Reddit cache refresh."""
     subreddit = config.get("subreddit")
+    show_titles = config.get("show_titles", False)
     
     # Update cache config
     reddit_global_cache["config"] = {
-        "subreddit": subreddit or reddit_global_cache["config"].get("subreddit", "memes")
+        "subreddit": subreddit or reddit_global_cache["config"].get("subreddit", "memes"),
+        "show_titles": show_titles
     }
     save_reddit_cache()
 
-    print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']}")
+    print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']} (Show titles: {show_titles})")
     
     # Start the fetch in the background
     asyncio.create_task(refresh_global_reddit_cache(

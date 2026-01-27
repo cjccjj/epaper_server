@@ -1,5 +1,5 @@
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 import numpy as np
 import os
@@ -136,7 +136,54 @@ def apply_burkes(data):
                 
     return out.astype(np.uint8)
 
-def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
+def overlay_title(img, title):
+    """Overlay title on the bottom of the image with outlined text for legibility."""
+    if not title:
+        return img
+    
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    
+    # Try to load a font, fallback to default
+    try:
+        # 16px font
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+        
+    # Bottom 20px area
+    # Single line, cut if too long
+    # We use textbbox to measure text size
+    left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
+    text_w = right - left
+    text_h = bottom - top
+    
+    # Truncate if too long
+    if text_w > w - 10:
+        while text_w > w - 20 and len(title) > 0:
+            title = title[:-1]
+            left, top, right, bottom = draw.textbbox((0, 0), title + "...", font=font)
+            text_w = right - left
+        title += "..."
+
+    # Position: center horizontally, bottom 20px area
+    x = (w - text_w) // 2
+    y = h - 20 + (20 - text_h) // 2 - 2 # Offset slightly up
+    
+    # Outlined text: print black first, then white offset
+    # On 1-bit image: 0 is black, 1 is white (usually, but PIL '1' mode uses 0/255 internally sometimes)
+    # Actually for '1' mode: 0 is black, 255 is white.
+    
+    # Draw black outline (shifted in 8 directions)
+    for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+        draw.text((x + dx, y + dy), title, font=font, fill=0)
+    
+    # Draw white text
+    draw.text((x, y), title, font=font, fill=255)
+    
+    return img
+
+def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD, title=None):
     # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
@@ -156,6 +203,11 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     
     # 5. Convert back to Pillow image (1-bit mode)
     dithered_img = Image.fromarray(data).convert("1")
+    
+    # 6. Overlay title if provided
+    if title:
+        dithered_img = overlay_title(dithered_img, title)
+        
     return dithered_img
 
 
@@ -167,9 +219,9 @@ def save_as_bmp(img, path):
     # BMP format for epaper usually needs to be 1-bit or 8-bit
     img.save(path, format="BMP")
 
-def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD):
+def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD, title=None):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)
-    dithered = process_and_dither(img, target_size, resize_mode=resize_mode, stretch_threshold=stretch_threshold)
+    dithered = process_and_dither(img, target_size, resize_mode=resize_mode, stretch_threshold=stretch_threshold, title=title)
     save_as_bmp(dithered, output_path)
     return output_path
