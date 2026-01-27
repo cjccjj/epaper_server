@@ -606,32 +606,16 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
     device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
     if not device: raise HTTPException(status_code=404, detail="Device not found")
 
+    # Use the original filename or generate a new one, but keep the extension
+    # Actually, we should probably force .bmp extension if we expect BMPs
     ext = os.path.splitext(file.filename)[1]
+    if not ext: ext = ".bmp" # Default to .bmp if no extension
+    
     filename = f"{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(BITMAP_DIR, filename)
 
-    # Save as temporary PNG first
-    temp_path = file_path + ".png"
-    with open(temp_path, "wb") as buffer:
+    with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-
-    try:
-        # Convert to 1-bit BMP using Pillow to ensure 0=black, 1=white
-        from PIL import Image
-        with Image.open(temp_path) as img:
-            # The canvas upload is already dithered (either 1-bit or 4-level grey)
-            # convert("L") preserves greyscale levels for 4G FS mode
-            bmp_path = os.path.splitext(file_path)[0] + ".bmp"
-            img.convert("L").save(bmp_path, "BMP")
-            filename = os.path.basename(bmp_path)
-        
-        # Clean up temp file
-        os.remove(temp_path)
-    except Exception as e:
-        print(f"Error converting upload to BMP: {e}")
-        # Fallback to the original file if conversion fails
-        filename = os.path.basename(file_path)
-        os.rename(temp_path, file_path)
 
     new_img = database.DeviceImage(
         mac_address=mac,
