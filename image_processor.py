@@ -145,33 +145,55 @@ def overlay_title(img, title):
     w, h = img.size
     
     # Try to load a font, fallback to common paths
+    # The user wants the font to be 24px in height. 
+    # In TTF, 'size' is the em-size. To get a specific pixel height for characters,
+    # we can iterate to find the right size.
     font = None
+    target_char_height = 24
+    
     font_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "DejaVuSans.ttf"
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
     ]
     
     for path in font_paths:
         try:
-            font = ImageFont.truetype(path, 24)
-            print(f"DEBUG: Successfully loaded font from {path} with size 24")
-            break
+            # We want the visible height of capital letters (like 'H') to be ~24px
+            # Usually em-size is ~1.4x the capital letter height.
+            # We'll start at 32 and check.
+            for size in range(32, 40):
+                test_font = ImageFont.truetype(path, size)
+                # Measure 'H' height
+                l, t, r, b = test_font.getbbox("H")
+                h_height = b - t
+                if h_height >= target_char_height:
+                    font = test_font
+                    print(f"DEBUG: Loaded {path} at size {size} (H-height={h_height})")
+                    break
+            if font: break
         except Exception as e:
-             print(f"DEBUG: Failed to load font {path}: {e}")
-             continue
-             
+            print(f"DEBUG: Failed to load font {path}: {e}")
+            continue
+            
     if font is None:
-        print("WARNING: Could not load any TTF font, falling back to default (size will be small)")
+        print("WARNING: Could not load any TTF font, falling back to default")
         font = ImageFont.load_default()
-        
-    # Bottom 40px area
+        actual_height = 12
+    else:
+        ascent, descent = font.getmetrics()
+        actual_height = ascent + descent
+
+    # Bottom area should be enough to fit the font plus some padding
+    # If font is ~24px tall, area should be ~34-40px
+    area_h = max(34, actual_height + 4)
+    
     # Single line, cut if too long
     # We use textbbox to measure text size
     left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
     text_w = right - left
-    text_h = bottom - top
+    text_h = bottom - top # This is the bounding box height of the specific string
     
     # Truncate if too long
     if text_w > w - 20:
@@ -181,9 +203,10 @@ def overlay_title(img, title):
             text_w = right - left
         title += "..."
 
-    # Position: center horizontally, bottom 40px area
+    # Position: center horizontally, bottom area_h area
     x = (w - text_w) // 2
-    y = h - 40 + (40 - text_h) // 2 - 2 # Offset slightly up
+    # Vertically center within the area_h
+    y = h - area_h + (area_h - text_h) // 2 - 2
     
     # Outlined text: print black first, then white offset
     # On 1-bit image: 0 is black, 1 is white (usually, but PIL '1' mode uses 0/255 internally sometimes)
