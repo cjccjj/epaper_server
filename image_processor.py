@@ -13,7 +13,7 @@ def load_global_font():
     for path in font_paths:
         try:
             # em-size 33 usually yields ~24-26px actual height
-            return ImageFont.truetype(path, 33)
+            return ImageFont.truetype(path, 24)
         except (IOError, OSError):
             continue
     print("WARNING: Could not load any TTF font, falling back to default.")
@@ -37,7 +37,7 @@ def resize_if_large(img, max_dim=1024):
     return img
 
 def download_image(url):
-    headers = {"User-Agent": "linux:epaper-server:v1.0.0 (by /u/cj)"}
+    headers = {"User-Agent": "linux:epaper-rss-reader:v1.0.0 (by /u/cj)"}
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -222,8 +222,8 @@ def overlay_title(img, title):
     # --- Drawing ---
     # Draw black outline (8-way) for high contrast on dithered bg
     # 0 is black in '1' or 'L' mode
-    outline_color = 0 
-    text_color = 255
+    outline_color = 255 
+    text_color = 0
     
     for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
         draw.text((x + dx, y + dy), title, font=font, fill=outline_color)
