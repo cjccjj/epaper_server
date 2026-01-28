@@ -136,6 +136,8 @@ def apply_burkes(data):
                 
     return out.astype(np.uint8)
 
+from PIL import ImageDraw, ImageFont
+
 def overlay_title(img, title):
     """Overlay title on the bottom of the image with outlined text for legibility."""
     if not title:
@@ -144,77 +146,52 @@ def overlay_title(img, title):
     draw = ImageDraw.Draw(img)
     w, h = img.size
     
-    # Try to load a font, fallback to common paths
-    # The user wants the font to be 24px in height. 
-    # In TTF, 'size' is the em-size. To get a specific pixel height for characters,
-    # we can iterate to find the right size.
+    # Improved font loading with fallbacks
+    font_paths = ["/app/data/ntailu.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
     font = None
-    target_char_height = 24
-    
-    font_paths = [
-        "/app/data/ntailu.ttf",
-
-    ]
     
     for path in font_paths:
         try:
-            # We want the visible height of capital letters (like 'H') to be ~24px
-            # Usually em-size is ~1.4x the capital letter height.
-            # We'll start at 32 and check.
-            for size in range(32, 40):
-                test_font = ImageFont.truetype(path, size)
-                # Measure 'H' height
-                l, t, r, b = test_font.getbbox("H")
-                h_height = b - t
-                if h_height >= target_char_height:
-                    font = test_font
-                    print(f"DEBUG: Loaded {path} at size {size} (H-height={h_height})")
-                    break
-            if font: break
-        except Exception as e:
-            print(f"DEBUG: Failed to load font {path}: {e}")
+            # em-size 33 usually yields ~24-26px actual height
+            font = ImageFont.truetype(path, 33)
+            break 
+        except Exception:
             continue
             
     if font is None:
-        print("WARNING: Could not load any TTF font, falling back to default")
         font = ImageFont.load_default()
-        actual_height = 12
+        ascent, descent = 10, 2 # Rough estimates for default
     else:
         ascent, descent = font.getmetrics()
-        actual_height = ascent + descent
 
-    # Bottom area should be enough to fit the font plus some padding
-    # If font is ~24px tall, area should be ~34-40px
-    area_h = max(34, actual_height + 4)
+    line_height = ascent + descent
+    # Use a consistent area height regardless of specific character glyphs
+    area_h = max(34, line_height + 10)
     
-    # Single line, cut if too long
-    # We use textbbox to measure text size
-    left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
-    text_w = right - left
-    text_h = bottom - top # This is the bounding box height of the specific string
-    
+    # Measure text width
+    def get_text_width(text):
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0]
+
     # Truncate if too long
-    if text_w > w - 20:
-        while text_w > w - 40 and len(title) > 0:
+    if get_text_width(title) > w - 20:
+        while get_text_width(title + "...") > w - 20 and len(title) > 0:
             title = title[:-1]
-            left, top, right, bottom = draw.textbbox((0, 0), title + "...", font=font)
-            text_w = right - left
         title += "..."
 
-    # Position: center horizontally, bottom area_h area
+    text_w = get_text_width(title)
+    
+    # Calculations for positioning
     x = (w - text_w) // 2
-    # Vertically center within the area_h
-    y = h - area_h + (area_h - text_h) // 2 - 2
+    # Use ascent to anchor the baseline consistently
+    y = h - area_h + (area_h - line_height) // 2 
     
-    # Outlined text: print black first, then white offset
-    # On 1-bit image: 0 is black, 1 is white (usually, but PIL '1' mode uses 0/255 internally sometimes)
-    # Actually for '1' mode: 0 is black, 255 is white.
-    
-    # Draw black outline (shifted in 8 directions)
+    # Draw black outline (8-way)
+    # Note: If img mode is '1', fill=0 is black, fill=255 is white.
     for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
         draw.text((x + dx, y + dy), title, font=font, fill=0)
     
-    # Draw white text
+    # Draw white text center
     draw.text((x, y), title, font=font, fill=255)
     
     return img
