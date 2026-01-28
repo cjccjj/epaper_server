@@ -144,14 +144,29 @@ def overlay_title(img, title):
     draw = ImageDraw.Draw(img)
     w, h = img.size
     
-    # Try to load a font, fallback to default
-    try:
-        # 48px font
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
-    except:
+    # Try to load a font, fallback to common paths
+    font = None
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "DejaVuSans.ttf"
+    ]
+    
+    for path in font_paths:
+        try:
+            font = ImageFont.truetype(path, 24)
+            print(f"DEBUG: Successfully loaded font from {path} with size 24")
+            break
+        except Exception as e:
+             print(f"DEBUG: Failed to load font {path}: {e}")
+             continue
+             
+    if font is None:
+        print("WARNING: Could not load any TTF font, falling back to default (size will be small)")
         font = ImageFont.load_default()
         
-    # Bottom 60px area
+    # Bottom 40px area
     # Single line, cut if too long
     # We use textbbox to measure text size
     left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
@@ -166,9 +181,9 @@ def overlay_title(img, title):
             text_w = right - left
         title += "..."
 
-    # Position: center horizontally, bottom 60px area
+    # Position: center horizontally, bottom 40px area
     x = (w - text_w) // 2
-    y = h - 60 + (60 - text_h) // 2 - 4 # Offset slightly up
+    y = h - 40 + (40 - text_h) // 2 - 2 # Offset slightly up
     
     # Outlined text: print black first, then white offset
     # On 1-bit image: 0 is black, 1 is white (usually, but PIL '1' mode uses 0/255 internally sometimes)
