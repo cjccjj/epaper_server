@@ -7,7 +7,7 @@ services:
     volumes:
       - ./bitmaps:/app/bitmaps
       - ./data:/app/data
-      - ./static/ntailu.tff:/app/data/ntailu.tff
+      - ./static/ntailu.ttf:/app/data/ntailu.ttf
     environment:
       - ADMIN_PASSWORD=z0000l
     restart: always

@@ -152,7 +152,7 @@ def overlay_title(img, title):
     target_char_height = 24
     
     font_paths = [
-        "/app/data/ntailu.tff",
+        "/app/data/ntailu.ttf",
 
     ]
     
