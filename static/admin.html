@@ -232,35 +232,32 @@
                 <h3>Reddit Top Config</h3>
                 <div class="reddit-config">
                     <div class="config-group">
-                        <label style="width: 120px;">Text Inside Image</label>
-                        <select id="redditSubInside">
-                            <option value="">-- Select --</option>
-                            <option value="memes">r/memes</option>
-                            <option value="dankmemes">r/dankmemes</option>
-                            <option value="AdviceAnimals">r/AdviceAnimals</option>
-                            <option value="wholesomememes">r/wholesomememes</option>
-                            <option value="PrequelMemes">r/PrequelMemes</option>
-                            <option value="HistoryMemes">r/HistoryMemes</option>
-                            <option value="trippinthroughtime">r/trippinthroughtime</option>
-                            <option value="me_irl">r/me_irl</option>
-                            <option value="Antimeme">r/Antimeme</option>
-                            <option value="StarterPacks">r/StarterPacks</option>
-                        </select>
-                    </div>
-                    <div class="config-group">
-                        <label style="width: 120px;">Text Outside (Title)</label>
-                        <select id="redditSubOutside">
-                            <option value="">-- Select --</option>
-                            <option value="itookapicture">r/itookapicture</option>
-                            <option value="EarthPorn">r/EarthPorn</option>
-                            <option value="Art">r/Art</option>
-                            <option value="OldSchoolCool">r/OldSchoolCool</option>
-                            <option value="MildlyInteresting">r/MildlyInteresting</option>
-                            <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
-                            <option value="StreetPhotography">r/StreetPhotography</option>
-                            <option value="DataIsBeautiful">r/DataIsBeautiful</option>
-                            <option value="WhatIsThisThing">r/WhatIsThisThing</option>
-                            <option value="FoodPorn">r/FoodPorn</option>
+                        <label style="width: 120px;">Subreddit</label>
+                        <select id="redditSub">
+                            <optgroup label="Text already in image (Memes)">
+                                <option value="memes">r/memes</option>
+                                <option value="dankmemes">r/dankmemes</option>
+                                <option value="AdviceAnimals">r/AdviceAnimals</option>
+                                <option value="wholesomememes">r/wholesomememes</option>
+                                <option value="PrequelMemes">r/PrequelMemes</option>
+                                <option value="HistoryMemes">r/HistoryMemes</option>
+                                <option value="trippinthroughtime">r/trippinthroughtime</option>
+                                <option value="me_irl">r/me_irl</option>
+                                <option value="Antimeme">r/Antimeme</option>
+                                <option value="StarterPacks">r/StarterPacks</option>
+                            </optgroup>
+                            <optgroup label="No text in image (Photos/Art)">
+                                <option value="itookapicture">r/itookapicture</option>
+                                <option value="EarthPorn">r/EarthPorn</option>
+                                <option value="Art">r/Art</option>
+                                <option value="OldSchoolCool">r/OldSchoolCool</option>
+                                <option value="MildlyInteresting">r/MildlyInteresting</option>
+                                <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
+                                <option value="StreetPhotography">r/StreetPhotography</option>
+                                <option value="DataIsBeautiful">r/DataIsBeautiful</option>
+                                <option value="WhatIsThisThing">r/WhatIsThisThing</option>
+                                <option value="FoodPorn">r/FoodPorn</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="config-group">
@@ -312,8 +309,7 @@
             addBtn: document.getElementById('addBtn'),
             overlay: document.getElementById('overlay'),
             overlayImg: document.getElementById('overlayImg'),
-            redditSubInside: document.getElementById('redditSubInside'),
-            redditSubOutside: document.getElementById('redditSubOutside'),
+            redditSub: document.getElementById('redditSub'),
             redditShowTitle: document.getElementById('redditShowTitle'),
             redditPreview: document.getElementById('redditPreview'),
             fetchNowBtn: document.getElementById('fetchNowBtn')
@@ -375,26 +371,14 @@
                 r.readAsDataURL(f);
             });
 
-            dom.redditSubInside.addEventListener('change', () => {
-                if (dom.redditSubInside.value) {
-                    dom.redditSubOutside.value = "";
-                    dom.redditSubOutside.disabled = true;
+            dom.redditSub.addEventListener('change', () => {
+                const sub = dom.redditSub.value;
+                const insideSubs = ['memes', 'dankmemes', 'AdviceAnimals', 'wholesomememes', 'PrequelMemes', 'HistoryMemes', 'trippinthroughtime', 'me_irl', 'Antimeme', 'StarterPacks'];
+                
+                if (insideSubs.includes(sub)) {
                     dom.redditShowTitle.checked = false;
-                    dom.redditShowTitle.disabled = true;
                 } else {
-                    dom.redditSubOutside.disabled = false;
-                    dom.redditShowTitle.disabled = false;
-                }
-            });
-
-            dom.redditSubOutside.addEventListener('change', () => {
-                if (dom.redditSubOutside.value) {
-                    dom.redditSubInside.value = "";
-                    dom.redditSubInside.disabled = true;
                     dom.redditShowTitle.checked = true;
-                    dom.redditShowTitle.disabled = false;
-                } else {
-                    dom.redditSubInside.disabled = false;
                 }
             });
 
@@ -453,7 +437,7 @@
                 
                 // 2. Trigger fetch with current config
                 const config = {
-                    subreddit: dom.redditSubInside.value || dom.redditSubOutside.value || 'memes',
+                    subreddit: dom.redditSub.value || 'memes',
                     show_titles: dom.redditShowTitle.checked
                 };
 
@@ -487,7 +471,7 @@
 
         async function saveRedditConfig(showAlert = true) {
             const config = {
-                subreddit: dom.redditSubInside.value || dom.redditSubOutside.value || 'memes',
+                subreddit: dom.redditSub.value || 'memes',
                 show_titles: dom.redditShowTitle.checked
             };
             const d = devices.find(x => x.mac_address === currentMac);
@@ -516,7 +500,7 @@
                         <div class="reddit-post">
                             <img src="/api/bitmap/${Date.now()}/${post.bmp_filename}" 
                                  alt="${post.title || ''}" 
-                                 onclick="showOverlay('/api/bitmap/${Date.now()}/${post.bmp_filename}')">
+                                 onclick="showFull('/api/bitmap/${Date.now()}/${post.bmp_filename}')">
                             <div class="post-title">${post.title || 'Reddit Post'}</div>
                         </div>
                     `).join('');
@@ -527,11 +511,6 @@
                 // Silently fail if fetch is in progress or server is busy
                 console.log('Reddit preview load skipped or failed:', e);
             }
-        }
-
-        function showOverlay(src) {
-            dom.overlayImg.src = src;
-            dom.overlay.style.display = 'flex';
         }
 
         async function fetchDevices() {
@@ -611,24 +590,8 @@
 
             // Update Reddit Config inputs
             if (d.reddit_config) {
-                const sub = d.reddit_config.subreddit || 'memes';
-                const showTitle = d.reddit_config.show_titles || false;
-                
-                const insideSubs = ['memes', 'dankmemes', 'AdviceAnimals', 'wholesomememes', 'PrequelMemes', 'HistoryMemes', 'trippinthroughtime', 'me_irl', 'Antimeme', 'StarterPacks'];
-                
-                if (insideSubs.includes(sub)) {
-                    dom.redditSubInside.value = sub;
-                    dom.redditSubOutside.value = "";
-                    dom.redditSubOutside.disabled = true;
-                    dom.redditShowTitle.checked = false;
-                    dom.redditShowTitle.disabled = true;
-                } else {
-                    dom.redditSubOutside.value = sub;
-                    dom.redditSubInside.value = "";
-                    dom.redditSubInside.disabled = true;
-                    dom.redditShowTitle.checked = showTitle;
-                    dom.redditShowTitle.disabled = false;
-                }
+                dom.redditSub.value = d.reddit_config.subreddit || 'memes';
+                dom.redditShowTitle.checked = d.reddit_config.show_titles || false;
             }
         }
 
