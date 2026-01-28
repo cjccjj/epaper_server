@@ -146,12 +146,12 @@ def overlay_title(img, title):
     
     # Try to load a font, fallback to default
     try:
-        # 24px font (1.5 * 16px)
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+        # 48px font
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
     except:
         font = ImageFont.load_default()
         
-    # Bottom 30px area
+    # Bottom 60px area
     # Single line, cut if too long
     # We use textbbox to measure text size
     left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
@@ -159,16 +159,16 @@ def overlay_title(img, title):
     text_h = bottom - top
     
     # Truncate if too long
-    if text_w > w - 10:
-        while text_w > w - 20 and len(title) > 0:
+    if text_w > w - 20:
+        while text_w > w - 40 and len(title) > 0:
             title = title[:-1]
             left, top, right, bottom = draw.textbbox((0, 0), title + "...", font=font)
             text_w = right - left
         title += "..."
 
-    # Position: center horizontally, bottom 30px area
+    # Position: center horizontally, bottom 60px area
     x = (w - text_w) // 2
-    y = h - 30 + (30 - text_h) // 2 - 2 # Offset slightly up
+    y = h - 60 + (60 - text_h) // 2 - 4 # Offset slightly up
     
     # Outlined text: print black first, then white offset
     # On 1-bit image: 0 is black, 1 is white (usually, but PIL '1' mode uses 0/255 internally sometimes)
