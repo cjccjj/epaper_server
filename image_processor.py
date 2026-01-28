@@ -152,10 +152,8 @@ def overlay_title(img, title):
     target_char_height = 24
     
     font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
+        "/app/data/ntailu.tff",
+
     ]
     
     for path in font_paths:
