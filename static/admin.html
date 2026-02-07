@@ -807,17 +807,30 @@
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             
-            // Force Alpha to 255 to ensure opaque pixels
+            // Force Alpha to 255 and ensure colors are exactly at the target levels.
+            // This prevents UPNG's quantizer from shifting colors or adding noise.
             for (let i = 0; i < data.length; i += 4) {
+                let v = data[i];
+                if (ditherMode === 'burkes') {
+                    v = (v < 128) ? 0 : 255;
+                } else {
+                    // 4G levels
+                    if (v < 42) v = 0;
+                    else if (v < 128) v = 85;
+                    else if (v < 213) v = 170;
+                    else v = 255;
+                }
+                data[i] = data[i+1] = data[i+2] = v;
                 data[i+3] = 255;
             }
 
-            // Lossless encoding (cnum = 0) is CRITICAL here.
-            // When we used quantization (cnum = 4), UPNG re-calculated a palette and re-mapped 
-            // our dithered pixels, which caused the "pale" look and lost contrast.
-            // By using 0, we preserve our exact dithered grayscale values (0, 85, 170, 255) 
-            // or (0, 255) perfectly, matching the BMP quality but with much better compression.
-            const pngBuffer = UPNG.encode([data.buffer], width, height, 0);
+            // We use 256 instead of 2 or 4 to force a Palette-based PNG (Color Type 3) 
+            // without invoking UPNG's lossy quantization. Since we've already 
+            // dithered to 2 or 4 colors, UPNG will create a palette with ONLY 
+            // those colors, preserving the contrast perfectly (no "pale" look).
+            // The result will be an 8-bit indexed PNG which is much more 
+            // compatible than 32-bit RGBA or 1-bit/2-bit palette PNGs.
+            const pngBuffer = UPNG.encode([data.buffer], width, height, 256);
             return new Blob([pngBuffer], { type: 'image/png' });
         }
 
