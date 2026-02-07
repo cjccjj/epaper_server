@@ -643,34 +643,23 @@
             }
 
             // 3. Weighted Approaching Auto-Contrast (W-Approaching)
-            // Calculate histogram only for the actual image area to match dithering.html
+            // Calculate histogram for the dithered area
             const hist = new Array(256).fill(0);
             let sumValues = 0;
-            let pixelCount = 0;
+            const total = tw * th;
 
-            // Image area bounds
-            const startX = Math.floor(ox);
-            const startY = Math.floor(oy);
-            const endX = Math.floor(ox + nw);
-            const endY = Math.floor(oy + nh);
-
-            for (let y = startY; y < endY; y++) {
-                for (let x = startX; x < endX; x++) {
-                    const i = (y * tw + x) * 4;
-                    const v = data[i] | 0;
-                    hist[v]++;
-                    sumValues += v;
-                    pixelCount++;
-                }
+            for (let i = 0; i < data.length; i += 4) {
+                const v = data[i] | 0;
+                hist[v]++;
+                sumValues += v;
             }
 
-            const avg = sumValues / (pixelCount || 1);
+            const avg = sumValues / (total || 1);
             let totalPotentialDamage = 0;
             for (let i = 0; i < 256; i++) {
                 totalPotentialDamage += hist[i] * Math.abs(i - avg);
             }
 
-            const total = pixelCount; // Use actual image pixels instead of tw * th
             const targetArea = total * (clip / 100);
             const targetCost = totalPotentialDamage * (cost / 100);
             const minTarget = total * 0.005; // 0.5% safety clip
@@ -703,7 +692,7 @@
             while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
 
             const acScale = 255 / (right - left || 1);
-            // Apply contrast to the whole canvas (padding stays white because 255 >= right)
+            // Apply contrast to the whole canvas
             for (let i = 0; i < data.length; i += 4) {
                 let v = data[i];
                 if (v <= left) v = 0;
@@ -716,10 +705,8 @@
             const dMode = dom.ditherMode.value;
             if (dMode === 'nd4g') {
                 // No Dithering 4-Level Greyscale (4G ND)
-                // Linear palette: 0, 85, 170, 255
-                // Thresholds are midpoints: 42, 128, 213
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
+                for (let y = 0; y < th; y++) {
+                    for (let x = 0; x < tw; x++) {
                         const i = (y * tw + x) * 4;
                         const old = data[i];
                         
@@ -733,15 +720,13 @@
                     }
                 }
             } else if (dMode === 'fs4g') {
-                // Floyd-Steinberg 4-Level Greyscale (4G)
-                // Linear palette: 0, 85, 170, 255
-                // Thresholds are midpoints: 42, 128, 213
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
+                // Floyd-Steinberg 4-Level Greyscale (4G) - Serpentine Scan
+                for (let y = 0; y < th; y++) {
+                    const ltr = y % 2 === 0;
+                    for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
                         const i = (y * tw + x) * 4;
                         const old = data[i];
                         
-                        // Find closest 4G value using midpoints
                         let nw_val;
                         if (old < 42) nw_val = 0;
                         else if (old < 128) nw_val = 85;
@@ -752,7 +737,7 @@
                         data[i] = data[i+1] = data[i+2] = nw_val;
 
                         const add = (nx, ny, f) => {
-                            if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
+                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
                                 const j = (ny * tw + nx) * 4;
                                 const v = data[j] + err * f;
                                 const clamped = Math.max(0, Math.min(255, v));
@@ -760,16 +745,23 @@
                             }
                         };
 
-                        add(x + 1, y,     7 / 16);
-                        add(x - 1, y + 1, 3 / 16);
-                        add(x,     y + 1, 5 / 16);
-                        add(x + 1, y + 1, 1 / 16);
+                        if (ltr) {
+                            add(x + 1, y,     7 / 16);
+                            add(x - 1, y + 1, 3 / 16);
+                            add(x,     y + 1, 5 / 16);
+                            add(x + 1, y + 1, 1 / 16);
+                        } else {
+                            add(x - 1, y,     7 / 16);
+                            add(x + 1, y + 1, 3 / 16);
+                            add(x,     y + 1, 5 / 16);
+                            add(x - 1, y + 1, 1 / 16);
+                        }
                     }
                 }
             } else {
                 // Default: Burkes BW Dithering
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
+                for (let y = 0; y < th; y++) {
+                    for (let x = 0; x < tw; x++) {
                         const i = (y * tw + x) * 4;
                         const old = data[i];
                         const nw_val = old < 128 ? 0 : 255;
@@ -777,7 +769,7 @@
                         data[i] = data[i+1] = data[i+2] = nw_val;
 
                         const add = (nx, ny, f) => {
-                            if (nx >= startX && nx < endX && ny >= startY && ny < endY) {
+                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
                                 const j = (ny * tw + nx) * 4;
                                 const v = data[j] + err * f;
                                 const clamped = Math.max(0, Math.min(255, v));
@@ -824,13 +816,11 @@
                 data[i+3] = 255;
             }
 
-            // We use 256 instead of 2 or 4 to force a Palette-based PNG (Color Type 3) 
-            // without invoking UPNG's lossy quantization. Since we've already 
-            // dithered to 2 or 4 colors, UPNG will create a palette with ONLY 
-            // those colors, preserving the contrast perfectly (no "pale" look).
-            // The result will be an 8-bit indexed PNG which is much more 
-            // compatible than 32-bit RGBA or 1-bit/2-bit palette PNGs.
-            const pngBuffer = UPNG.encode([data.buffer], width, height, 256);
+            // Use exact color counts to force 1-bit or 2-bit PNGs where possible.
+            // This matches the user's requirement: "if 1 bit, use 1 bit PNG, if 2bit use 2 bit PNG".
+            // UPNG.encode with cnum > 0 creates a palette-based PNG.
+            const cnum = (ditherMode === 'burkes') ? 2 : 4;
+            const pngBuffer = UPNG.encode([data.buffer], width, height, cnum);
             return new Blob([pngBuffer], { type: 'image/png' });
         }
 
