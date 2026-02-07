@@ -210,6 +210,7 @@
                             <label>Dither</label>
                             <select id="ditherMode">
                                 <option value="burkes">Burkes (BW)</option>
+                                <option value="fs">Floyd-Steinberg (BW)</option>
                                 <option value="fs4g">4G FS (Gray)</option>
                                 <option value="nd4g">4G ND (Gray)</option>
                             </select>
@@ -630,7 +631,7 @@
 
             gOri.drawImage(img, ox, oy, nw, nh);
 
-            // 2. Grayscale
+            // 2. Grayscale & Alpha normalization
             const imageData = gOri.getImageData(0, 0, tw, th);
             const data = imageData.data;
             const doGamma = dom.gamma.checked;
@@ -640,10 +641,10 @@
                     g = 255 * Math.pow(g / 255, 1 / 2.2);
                 }
                 data[i] = data[i+1] = data[i+2] = g;
+                data[i+3] = 255; // Force full opacity
             }
 
             // 3. Weighted Approaching Auto-Contrast (W-Approaching)
-            // Calculate histogram for the dithered area
             const hist = new Array(256).fill(0);
             let sumValues = 0;
             const total = tw * th;
@@ -692,7 +693,6 @@
             while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
 
             const acScale = 255 / (right - left || 1);
-            // Apply contrast to the whole canvas
             for (let i = 0; i < data.length; i += 4) {
                 let v = data[i];
                 if (v <= left) v = 0;
@@ -701,50 +701,72 @@
                 data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, v));
             }
 
-            // 4. Dithering
+            // Update gOri to show the auto-contrasted grayscale image
+            gOri.putImageData(imageData, 0, 0);
+
+            // 4. Dithering (on a copy so we don't mess up the auto-contrast display)
+            const ditherData = new Uint8ClampedArray(data);
             const dMode = dom.ditherMode.value;
             if (dMode === 'nd4g') {
-                // No Dithering 4-Level Greyscale (4G ND)
-                for (let y = 0; y < th; y++) {
-                    for (let x = 0; x < tw; x++) {
-                        const i = (y * tw + x) * 4;
-                        const old = data[i];
-                        
-                        let nw_val;
-                        if (old < 42) nw_val = 0;
-                        else if (old < 128) nw_val = 85;
-                        else if (old < 213) nw_val = 170;
-                        else nw_val = 255;
-                        
-                        data[i] = data[i+1] = data[i+2] = nw_val;
-                    }
+                for (let i = 0; i < ditherData.length; i += 4) {
+                    const old = ditherData[i];
+                    let nw_val;
+                    if (old < 42) nw_val = 0;
+                    else if (old < 128) nw_val = 85;
+                    else if (old < 213) nw_val = 170;
+                    else nw_val = 255;
+                    ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                 }
             } else if (dMode === 'fs4g') {
-                // Floyd-Steinberg 4-Level Greyscale (4G) - Serpentine Scan
                 for (let y = 0; y < th; y++) {
                     const ltr = y % 2 === 0;
                     for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
                         const i = (y * tw + x) * 4;
-                        const old = data[i];
-                        
+                        const old = ditherData[i];
                         let nw_val;
                         if (old < 42) nw_val = 0;
                         else if (old < 128) nw_val = 85;
                         else if (old < 213) nw_val = 170;
                         else nw_val = 255;
-                        
                         const err = old - nw_val;
-                        data[i] = data[i+1] = data[i+2] = nw_val;
-
+                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                         const add = (nx, ny, f) => {
                             if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
                                 const j = (ny * tw + nx) * 4;
-                                const v = data[j] + err * f;
-                                const clamped = Math.max(0, Math.min(255, v));
-                                data[j] = data[j+1] = data[j+2] = clamped;
+                                const v = ditherData[j] + err * f;
+                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
                             }
                         };
-
+                        if (ltr) {
+                            add(x + 1, y,     7 / 16);
+                            add(x - 1, y + 1, 3 / 16);
+                            add(x,     y + 1, 5 / 16);
+                            add(x + 1, y + 1, 1 / 16);
+                        } else {
+                            add(x - 1, y,     7 / 16);
+                            add(x + 1, y + 1, 3 / 16);
+                            add(x,     y + 1, 5 / 16);
+                            add(x - 1, y + 1, 1 / 16);
+                        }
+                    }
+                }
+            } else if (dMode === 'fs') {
+                // Floyd-Steinberg BW
+                for (let y = 0; y < th; y++) {
+                    const ltr = y % 2 === 0;
+                    for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
+                        const i = (y * tw + x) * 4;
+                        const old = ditherData[i];
+                        const nw_val = old < 128 ? 0 : 255;
+                        const err = old - nw_val;
+                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
+                        const add = (nx, ny, f) => {
+                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
+                                const j = (ny * tw + nx) * 4;
+                                const v = ditherData[j] + err * f;
+                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
+                            }
+                        };
                         if (ltr) {
                             add(x + 1, y,     7 / 16);
                             add(x - 1, y + 1, 3 / 16);
@@ -759,24 +781,21 @@
                     }
                 }
             } else {
-                // Default: Burkes BW Dithering
+                // Default: Burkes BW
                 for (let y = 0; y < th; y++) {
                     for (let x = 0; x < tw; x++) {
                         const i = (y * tw + x) * 4;
-                        const old = data[i];
+                        const old = ditherData[i];
                         const nw_val = old < 128 ? 0 : 255;
                         const err = (old - nw_val) / 32;
-                        data[i] = data[i+1] = data[i+2] = nw_val;
-
+                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                         const add = (nx, ny, f) => {
                             if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
                                 const j = (ny * tw + nx) * 4;
-                                const v = data[j] + err * f;
-                                const clamped = Math.max(0, Math.min(255, v));
-                                data[j] = data[j+1] = data[j+2] = clamped;
+                                const v = ditherData[j] + err * f;
+                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
                             }
                         };
-
                         add(x + 1, y,     8);
                         add(x + 2, y,     4);
                         add(x - 2, y + 1, 2);
@@ -788,7 +807,7 @@
                 }
             }
 
-            gDit.putImageData(imageData, 0, 0);
+            gDit.putImageData(new ImageData(ditherData, tw, th), 0, 0);
             dom.stats.textContent = `Original: ${img.width}x${img.height} | Processed: ${tw}x${th} | Range: [${left}, ${right}]`;
         }
 
@@ -799,30 +818,108 @@
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             
-            // Force Alpha to 255 and ensure colors are exactly at the target levels.
-            // This prevents UPNG's quantizer from shifting colors or adding noise.
-            for (let i = 0; i < data.length; i += 4) {
-                let v = data[i];
-                if (ditherMode === 'burkes') {
-                    v = (v < 128) ? 0 : 255;
-                } else {
-                    // 4G levels
-                    if (v < 42) v = 0;
-                    else if (v < 128) v = 85;
-                    else if (v < 213) v = 170;
-                    else v = 255;
+            const isBW = (ditherMode === 'burkes' || ditherMode === 'fs');
+            const bitDepth = isBW ? 1 : 2;
+            
+            // 1. Prepare Palette and Indices
+            let palette, indices = new Uint8Array(width * height);
+            if (isBW) {
+                palette = [0, 0, 0, 255, 255, 255]; // Black, White
+                for (let i = 0; i < data.length; i += 4) {
+                    indices[i / 4] = data[i] < 128 ? 0 : 1;
                 }
-                data[i] = data[i+1] = data[i+2] = v;
-                data[i+3] = 255;
+            } else {
+                palette = [0, 0, 0, 85, 85, 85, 170, 170, 170, 255, 255, 255]; // 4G levels
+                for (let i = 0; i < data.length; i += 4) {
+                    const v = data[i];
+                    if (v < 42) indices[i / 4] = 0;
+                    else if (v < 128) indices[i / 4] = 1;
+                    else if (v < 213) indices[i / 4] = 2;
+                    else indices[i / 4] = 3;
+                }
             }
 
-            // We use 256 instead of 2 or 4 to force an 8-bit Indexed PNG.
-            // This is much more compatible than 1-bit or 2-bit PNGs and avoids
-            // lossy quantization because it has enough slots for our colors.
-            // We also use a copy of the buffer to ensure it's clean.
-            const cleanData = new Uint8Array(data);
-            const pngBuffer = UPNG.encode([cleanData.buffer], width, height, 256);
-            return new Blob([pngBuffer], { type: 'image/png' });
+            // 2. Pack indices into rows with filter byte (0)
+            const bytesPerRow = Math.ceil((width * bitDepth) / 8);
+            const packedData = new Uint8Array(height * (1 + bytesPerRow));
+            
+            for (let y = 0; y < height; y++) {
+                const rowStart = y * (1 + bytesPerRow);
+                packedData[rowStart] = 0; // Filter Type 0 (None)
+                
+                for (let x = 0; x < width; x++) {
+                    const idx = indices[y * width + x];
+                    const bytePos = rowStart + 1 + Math.floor((x * bitDepth) / 8);
+                    if (bitDepth === 1) {
+                        const bitPos = 7 - (x % 8);
+                        packedData[bytePos] |= (idx << bitPos);
+                    } else {
+                        const bitPos = 6 - (x % 4) * 2;
+                        packedData[bytePos] |= (idx << bitPos);
+                    }
+                }
+            }
+
+            // 3. Helper functions for PNG construction
+            const crcTable = new Int32Array(256);
+            for (let n = 0; n < 256; n++) {
+                let c = n;
+                for (let k = 0; k < 8; k++) {
+                    c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+                }
+                crcTable[n] = c;
+            }
+
+            function crc32(buf) {
+                let crc = -1;
+                for (let i = 0; i < buf.length; i++) {
+                    crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+                }
+                return crc ^ -1;
+            }
+
+            function makeChunk(type, data) {
+                const len = data.length;
+                const buf = new Uint8Array(12 + len);
+                const view = new DataView(buf.buffer);
+                view.setUint32(0, len);
+                buf.set(new TextEncoder().encode(type), 4);
+                buf.set(data, 8);
+                const crc = crc32(buf.slice(4, 8 + len));
+                view.setUint32(8 + len, crc);
+                return buf;
+            }
+
+            // 4. Build PNG
+            const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+            
+            const ihdrData = new Uint8Array(13);
+            const ihdrView = new DataView(ihdrData.buffer);
+            ihdrView.setUint32(0, width);
+            ihdrView.setUint32(4, height);
+            ihdrData[8] = bitDepth;
+            ihdrData[9] = 3; // Color Type 3: Indexed
+            ihdrData[10] = 0; // Compression: Deflate
+            ihdrData[11] = 0; // Filter: Adaptive
+            ihdrData[12] = 0; // Interlace: None
+            const ihdr = makeChunk('IHDR', ihdrData);
+
+            const plte = makeChunk('PLTE', new Uint8Array(palette));
+            
+            const compressed = pako.deflate(packedData, { level: 9 });
+            const idat = makeChunk('IDAT', compressed);
+            
+            const iend = makeChunk('IEND', new Uint8Array(0));
+
+            const totalLen = signature.length + ihdr.length + plte.length + idat.length + iend.length;
+            const finalBuf = new Uint8Array(totalLen);
+            let offset = 0;
+            [signature, ihdr, plte, idat, iend].forEach(c => {
+                finalBuf.set(c, offset);
+                offset += c.length;
+            });
+
+            return new Blob([finalBuf], { type: 'image/png' });
         }
 
         async function upload(e) {
