@@ -816,11 +816,12 @@
                 data[i+3] = 255;
             }
 
-            // Use exact color counts to force 1-bit or 2-bit PNGs where possible.
-            // This matches the user's requirement: "if 1 bit, use 1 bit PNG, if 2bit use 2 bit PNG".
-            // UPNG.encode with cnum > 0 creates a palette-based PNG.
-            const cnum = (ditherMode === 'burkes') ? 2 : 4;
-            const pngBuffer = UPNG.encode([data.buffer], width, height, cnum);
+            // We use 256 instead of 2 or 4 to force an 8-bit Indexed PNG.
+            // This is much more compatible than 1-bit or 2-bit PNGs and avoids
+            // lossy quantization because it has enough slots for our colors.
+            // We also use a copy of the buffer to ensure it's clean.
+            const cleanData = new Uint8Array(data);
+            const pngBuffer = UPNG.encode([cleanData.buffer], width, height, 256);
             return new Blob([pngBuffer], { type: 'image/png' });
         }
 
