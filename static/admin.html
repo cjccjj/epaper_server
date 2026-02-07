@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-Paper Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.min.js"></script>
     <style>
         :root { 
             --primary: #3b82f6; 
@@ -798,86 +800,20 @@
             dom.stats.textContent = `Original: ${img.width}x${img.height} | Processed: ${tw}x${th} | Range: [${left}, ${right}]`;
         }
 
-        function canvasToBMP(canvas, ditherMode) {
+        function canvasToPNG(canvas, ditherMode) {
             const width = canvas.width;
             const height = canvas.height;
             const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, width, height).data;
-
-            const is1Bit = ditherMode === 'burkes';
-            const bitsPerPixel = is1Bit ? 1 : 8;
-            const rowSize = Math.floor((bitsPerPixel * width + 31) / 32) * 4;
-            const paletteSize = is1Bit ? 2 : 256;
-            const colorTableSize = paletteSize * 4;
-            const pixelDataSize = rowSize * height;
-            const fileSize = 14 + 40 + colorTableSize + pixelDataSize;
-
-            const buffer = new ArrayBuffer(fileSize);
-            const view = new DataView(buffer);
-
-            // File Header
-            view.setUint16(0, 0x4D42, true); // "BM"
-            view.setUint32(2, fileSize, true);
-            view.setUint32(6, 0, true); // Reserved
-            view.setUint32(10, 14 + 40 + colorTableSize, true); // Offset to pixel data
-
-            // DIB Header (BITMAPINFOHEADER)
-            view.setUint32(14, 40, true); // Header size
-            view.setInt32(18, width, true);
-            view.setInt32(22, -height, true); // Negative height for top-down
-            view.setUint16(26, 1, true); // Planes
-            view.setUint16(28, bitsPerPixel, true);
-            view.setUint32(30, 0, true); // Compression (BI_RGB)
-            view.setUint32(34, pixelDataSize, true);
-            view.setInt32(38, 2835, true); // X pixels per meter (72 DPI)
-            view.setInt32(42, 2835, true); // Y pixels per meter (72 DPI)
-            view.setUint32(46, paletteSize, true);
-            view.setUint32(50, paletteSize, true);
-
-            // Color Table
-            let offset = 54;
-            if (is1Bit) {
-                // Black
-                view.setUint32(offset, 0x00000000, true);
-                offset += 4;
-                // White
-                view.setUint32(offset, 0x00FFFFFF, true);
-                offset += 4;
-            } else {
-                for (let i = 0; i < 256; i++) {
-                    const color = i | (i << 8) | (i << 16);
-                    view.setUint32(offset, color, true);
-                    offset += 4;
-                }
-            }
-
-            // Pixel Data
-            const pixelOffset = offset;
-            if (is1Bit) {
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const idx = (y * width + x) * 4;
-                        const avg = (imageData[idx] + imageData[idx + 1] + imageData[idx + 2]) / 3;
-                        if (avg > 128) {
-                            const byteIdx = y * rowSize + Math.floor(x / 8);
-                            const bitIdx = 7 - (x % 8);
-                            const currentByte = view.getUint8(pixelOffset + byteIdx);
-                            view.setUint8(pixelOffset + byteIdx, currentByte | (1 << bitIdx));
-                        }
-                    }
-                }
-            } else {
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const idx = (y * width + x) * 4;
-                        const avg = Math.round((imageData[idx] + imageData[idx + 1] + imageData[idx + 2]) / 3);
-                        const byteIdx = y * rowSize + x;
-                        view.setUint8(pixelOffset + byteIdx, avg);
-                    }
-                }
-            }
-
-            return new Blob([buffer], { type: 'image/bmp' });
+            const rgba = ctx.getImageData(0, 0, width, height).data.buffer;
+            
+            // ditherMode 'burkes' is 1-bit (2 colors), others (4G) are 2-bit (4 colors)
+            const colors = (ditherMode === 'burkes') ? 2 : 4;
+            
+            // UPNG.encode(bufs, w, h, cnum)
+            // bufs: array of ArrayBuffers containing RGBA data
+            // cnum: number of colors in the palette. 2 for 1-bit, 4 for 2-bit.
+            const pngBuffer = UPNG.encode([rgba], width, height, colors);
+            return new Blob([pngBuffer], { type: 'image/png' });
         }
 
         async function upload(e) {
@@ -887,10 +823,10 @@
             dom.addBtn.textContent = '...';
             
             const dMode = dom.ditherMode.value;
-            const blob = canvasToBMP(dom.cDit, dMode);
+            const blob = canvasToPNG(dom.cDit, dMode);
             
             const fd = new FormData();
-            fd.append('file', blob, 'processed.bmp');
+            fd.append('file', blob, 'processed.png');
             try {
                 const res = await fetch(`/admin/upload/${currentMac}`, { method: 'POST', body: fd });
                 if (res.ok) { 
