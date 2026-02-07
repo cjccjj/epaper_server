@@ -807,17 +807,22 @@
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             
-            // Force Alpha to 255 to ensure UPNG doesn't get confused by transparency
+            // UPNG.encode(bufs, w, h, cnum)
+            // cnum is the number of colors for quantization.
+            // If cnum = 0, it's lossless (usually results in 8-bit or 16-bit per channel).
+            
+            const is1Bit = (ditherMode === 'burkes');
+            
+            // Force Alpha to 255
             for (let i = 0; i < data.length; i += 4) {
                 data[i+3] = 255;
             }
-            
-            const colors = (ditherMode === 'burkes') ? 2 : 4;
-            
-            // UPNG.encode(bufs, w, h, cnum)
-            // cnum = 0 means lossless (no quantization)
-            // cnum > 0 means quantize to that many colors
-            // For 1-bit/2-bit, we already have the colors, so we just want UPNG to index them.
+
+            // If 1-bit, UPNG quantization sometimes fails or produces gray if colors are too stark.
+            // Using cnum=0 (lossless) for 1-bit ensures the pixels (0 and 255) are preserved exactly.
+            // UPNG will automatically use the most efficient bit depth for the resulting file.
+            const colors = is1Bit ? 0 : 4;
+
             const pngBuffer = UPNG.encode([data.buffer], width, height, colors);
             return new Blob([pngBuffer], { type: 'image/png' });
         }
