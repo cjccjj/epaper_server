@@ -710,11 +710,7 @@
             if (dMode === 'nd4g') {
                 for (let i = 0; i < ditherData.length; i += 4) {
                     const old = ditherData[i];
-                    let nw_val;
-                    if (old < 42) nw_val = 0;
-                    else if (old < 128) nw_val = 85;
-                    else if (old < 213) nw_val = 170;
-                    else nw_val = 255;
+                    const nw_val = Math.round(old / 85) * 85;
                     ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                 }
             } else if (dMode === 'fs4g') {
@@ -723,11 +719,7 @@
                     for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
                         const i = (y * tw + x) * 4;
                         const old = ditherData[i];
-                        let nw_val;
-                        if (old < 42) nw_val = 0;
-                        else if (old < 128) nw_val = 85;
-                        else if (old < 213) nw_val = 170;
-                        else nw_val = 255;
+                        const nw_val = Math.round(old / 85) * 85;
                         const err = old - nw_val;
                         ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                         const add = (nx, ny, f) => {
@@ -831,11 +823,7 @@
             } else {
                 palette = [0, 0, 0, 85, 85, 85, 170, 170, 170, 255, 255, 255]; // 4G levels
                 for (let i = 0; i < data.length; i += 4) {
-                    const v = data[i];
-                    if (v < 42) indices[i / 4] = 0;
-                    else if (v < 128) indices[i / 4] = 1;
-                    else if (v < 213) indices[i / 4] = 2;
-                    else indices[i / 4] = 3;
+                    indices[i / 4] = Math.round(data[i] / 85);
                 }
             }
 

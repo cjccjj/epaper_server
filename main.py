@@ -502,7 +502,7 @@ def get_display(
 def serve_bitmap(filename: str, timestamp: Optional[str] = None):
     path = os.path.join(BITMAP_DIR, filename)
     if not os.path.exists(path):
-        return HTTPException(status_code=404, detail="Bitmap not found")
+        raise HTTPException(status_code=404, detail="Bitmap not found")
     return FileResponse(path)
 
 @app.post("/api/log")

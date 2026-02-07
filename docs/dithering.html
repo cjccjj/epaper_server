@@ -94,6 +94,11 @@ body {
     font-size: 0.9em;
     margin: 0;
 }
+.control-row input[type="checkbox"] {
+    flex: 0;
+    width: auto;
+    height: auto;
+}
 .control-row input[type="range"] {
     min-width: 50px;
 }
@@ -171,6 +176,9 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
+                <label title="Gamma Correction (2.2)" style="flex: 0;">
+                    γ: <input type="checkbox" class="gamma-check">
+                </label>
                 <label>
                     Contrast:
                     <select class="ac-method">
@@ -186,6 +194,7 @@ input[type="file"] {
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
+                        <option value="4g_fs">4G_FS</option>
                     </select>
                 </label>
             </div>
@@ -227,6 +236,9 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
+                <label title="Gamma Correction (2.2)" style="flex: 0;">
+                    γ: <input type="checkbox" class="gamma-check">
+                </label>
                 <label>
                     Contrast:
                     <select class="ac-method">
@@ -242,6 +254,7 @@ input[type="file"] {
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
+                        <option value="4g_fs">4G_FS</option>
                     </select>
                 </label>
             </div>
@@ -283,6 +296,9 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
+                <label title="Gamma Correction (2.2)" style="flex: 0;">
+                    γ: <input type="checkbox" class="gamma-check">
+                </label>
                 <label>
                     Contrast:
                     <select class="ac-method">
@@ -298,6 +314,7 @@ input[type="file"] {
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
+                        <option value="4g_fs">4G_FS</option>
                     </select>
                 </label>
             </div>
@@ -377,6 +394,15 @@ const Processor = {
             else if (v >= right) v = 255;
             else v = (v - left) * scale;
             data[i] = data[i+1] = data[i+2] = this.clamp(v);
+        }
+    },
+
+    applyGamma(data) {
+        const gamma = 1 / 2.2;
+        for (let i = 0; i < data.length; i += 4) {
+            const v = data[i] / 255;
+            const g = Math.pow(v, gamma) * 255;
+            data[i] = data[i+1] = data[i+2] = this.clamp(g);
         }
     },
 
@@ -540,6 +566,40 @@ const Processor = {
         }
     },
 
+    dither4G_FS(d, w, h) {
+        for (let y = 0; y < h; y++) {
+            const ltr = y % 2 === 0;
+            for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
+                const i = (y * w + x) * 4;
+                const old = d[i];
+                // Quantize to 4 levels: 0, 85, 170, 255
+                const nw = Math.round(old / 85) * 85;
+                const err = old - nw;
+                d[i] = d[i+1] = d[i+2] = nw;
+
+                const add = (nx, ny, f) => {
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const j = (ny * w + nx) * 4;
+                        const v = d[j] + err * f;
+                        d[j] = d[j+1] = d[j+2] = this.clamp(v);
+                    }
+                };
+
+                if (ltr) {
+                    add(x + 1, y,     7 / 16);
+                    add(x - 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x + 1, y + 1, 1 / 16);
+                } else {
+                    add(x - 1, y,     7 / 16);
+                    add(x + 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x - 1, y + 1, 1 / 16);
+                }
+            }
+        }
+    },
+
     getUnifiedMetrics(hist, left, right, totalPixels, totalPotentialDamage) {
         let clippedBlack = 0, costBlack = 0;
         for (let i = 0; i < left; i++) {
@@ -571,6 +631,7 @@ class DitheringPipeline {
         this.container = document.getElementById(id);
         
         // Settings
+        this.gammaCheck = this.container.querySelector('.gamma-check');
         this.methodSel = this.container.querySelector('.ac-method');
         this.clipSlider = this.container.querySelector('.clip-slider');
         this.costSlider = this.container.querySelector('.cost-slider');
@@ -596,7 +657,7 @@ class DitheringPipeline {
     }
 
     initEvents() {
-        [this.methodSel, this.clipSlider, this.costSlider, this.ditherSel].forEach(el => {
+        [this.gammaCheck, this.methodSel, this.clipSlider, this.costSlider, this.ditherSel].forEach(el => {
             el.addEventListener('input', () => {
                 this.updateLabels();
                 this.updateVisibility();
@@ -630,6 +691,12 @@ class DitheringPipeline {
         this.gGrayOri.drawImage(AppState.sourceImg, 0, 0, w, h);
         let grayData = this.gGrayOri.getImageData(0, 0, w, h);
         Processor.grayscale(grayData.data);
+
+        // Gamma Correction
+        if (this.gammaCheck.checked) {
+            Processor.applyGamma(grayData.data);
+        }
+
         this.gGrayOri.putImageData(grayData, 0, 0);
 
         // Histogram & Potential Damage (calculated once per run or once per image? 
@@ -657,6 +724,8 @@ class DitheringPipeline {
             Processor.ditherAtkinson(ditherData.data, w, h);
         } else if (dMethod === 'burkes') {
             Processor.ditherBurkes(ditherData.data, w, h);
+        } else if (dMethod === '4g_fs') {
+            Processor.dither4G_FS(ditherData.data, w, h);
         }
         this.gDither.putImageData(ditherData, 0, 0);
 
