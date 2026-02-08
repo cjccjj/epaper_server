@@ -379,7 +379,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         
     finally:
         if db_session is None:
-            db.close()"}]}
+            db.close()
 
 
 # Dependency to get the database session
