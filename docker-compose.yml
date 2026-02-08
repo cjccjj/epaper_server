@@ -10,6 +10,7 @@ services:
       - ./static/ntailu.ttf:/app/data/ntailu.ttf
     environment:
       - ADMIN_PASSWORD=z0000l
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     restart: always
 
 volumes:

@@ -241,6 +241,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         apply_gamma = config.get("apply_gamma", bit_depth == 2)
         dither_mode = config.get("dither_mode", 'fs4g' if bit_depth == 2 else 'burkes')
         dither_strength = float(config.get("dither_strength", 1.0))
+        sharpen_amount = float(config.get("sharpen_amount", 0.0))
+        auto_optimize = config.get("auto_optimize", False)
             
         print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit)")
 
@@ -253,8 +255,11 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         all_posts = []
         seen_ids = set()
         
-        # Load current cache for reuse
         cache = load_device_reddit_cache(mac)
+        cache["status"] = "fetching"
+        cache["progress"] = "Starting..."
+        save_device_reddit_cache(mac, cache)
+
         existing_posts = {p["id"]: p for p in cache.get("posts", []) if isinstance(p, dict) and "id" in p}
         
         # Filename counter per device
@@ -290,6 +295,11 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                         if strategy_posts_added >= target_count:
                             break
                         
+                        # Update progress
+                        total_so_far = len(all_posts)
+                        cache["progress"] = f"Processing {label}: {strategy_posts_added+1}/{target_count} (Total: {total_so_far})"
+                        save_device_reddit_cache(mac, cache)
+
                         post_id = entry.get("id")
                         if not post_id or post_id in seen_ids:
                             continue
@@ -324,7 +334,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             try:
                                 title_to_overlay = entry.title if show_titles else None
                                 print(f"  DEBUG: Processing {img_url} -> {filename} ({bit_depth}-bit)")
-                                await asyncio.to_thread(
+                                _, ai_labels = await asyncio.to_thread(
                                     image_processor.process_image_url, 
                                     img_url, filepath,
                                     target_size=(width, height),
@@ -334,7 +344,9 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     cost_pct=cost_pct,
                                     apply_gamma=apply_gamma,
                                     dither_mode=dither_mode,
-                                    dither_strength=dither_strength
+                                    dither_strength=dither_strength,
+                                    sharpen_amount=sharpen_amount,
+                                    auto_optimize=auto_optimize
                                 )
                                 
                                 all_posts.append({
@@ -346,7 +358,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     "strategy": label,
                                     "bit_depth": bit_depth,
                                     "width": width,
-                                    "height": height
+                                    "height": height,
+                                    "ai_labels": ai_labels
                                 })
                                 
                                 seen_ids.add(post_id)
@@ -367,6 +380,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         cache["posts"] = all_posts
         cache["last_update"] = datetime.datetime.now()
         cache["config"] = config
+        cache["status"] = "idle"
+        cache["progress"] = ""
         save_device_reddit_cache(mac, cache)
         
         # Cleanup orphaned files for THIS device
@@ -407,7 +422,9 @@ DEFAULT_REDDIT_CONFIG = {
     "apply_gamma": False,
     "clip_pct": 22,
     "cost_pct": 6,
-    "dither_strength": 1.0
+    "dither_strength": 1.0,
+    "sharpen_amount": 0.0,
+    "auto_optimize": False
 }
 
 @app.get("/api/setup")
@@ -551,6 +568,17 @@ def log_event(id: str = Header(None), body: dict = Body(...), db: Session = Depe
     return {"status": 200, "message": "Log captured"}
 
 # --- Admin APIs ---
+
+@app.post("/admin/analyze_style")
+async def analyze_style(file: UploadFile = File(...)):
+    """Analyze image style using AI Stylist (for manual Gallery processing)."""
+    try:
+        contents = await file.read()
+        img = Image.open(io.BytesIO(contents))
+        style = ai_stylist.analyze_image(img)
+        return style
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():

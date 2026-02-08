@@ -201,6 +201,10 @@
                     
                     <div class="control-row">
                         <div class="control-group">
+                            <label>AI Auto</label>
+                            <input type="checkbox" id="autoOptimize" style="width: auto;" onchange="toggleAIAuto(); process()">
+                        </div>
+                        <div class="control-group">
                             <label>Gamma</label>
                             <input type="range" id="gammaVal" min="1.0" max="2.6" step="0.2" value="2.2" oninput="dom.gammaValValue.textContent = this.value; process()">
                             <span class="val"><span id="gammaValValue">2.2</span></span>
@@ -253,6 +257,10 @@
                     <h3>Reddit Configuration</h3>
                     
                     <div class="config-row">
+                        <div class="config-group" style="flex: 0; min-width: 120px;">
+                            <label class="compact-label">AI Auto-Optimize</label>
+                            <input type="checkbox" id="redditAutoOptimize" style="width: auto;">
+                        </div>
                         <div class="config-group">
                             <label>Subreddit</label>
                             <select id="redditSub">
@@ -387,6 +395,8 @@
             ditherStrengthValue: document.getElementById('ditherStrengthValue'),
             redditDitherStrength: document.getElementById('redditDitherStrength'),
             redditDitherStrengthValue: document.getElementById('redditDitherStrengthValue'),
+            autoOptimize: document.getElementById('autoOptimize'),
+            redditAutoOptimize: document.getElementById('redditAutoOptimize'),
             strengthGroup: document.getElementById('strengthGroup')
         };
 
@@ -398,6 +408,66 @@
         function toggleStrengthSlider() {
             const mode = dom.ditherMode.value;
             dom.strengthGroup.style.display = (mode === 'fs' || mode === 'fs4g') ? 'block' : 'none';
+        }
+
+        async function toggleAIAuto() {
+            const isAuto = dom.autoOptimize.checked;
+            // Disable sliders if auto is on
+            dom.gamma.disabled = isAuto;
+            dom.sharpen.disabled = isAuto;
+            dom.ditherStrength.disabled = isAuto;
+            if (isAuto) {
+                dom.gamma.parentElement.style.opacity = '0.5';
+                dom.sharpen.parentElement.style.opacity = '0.5';
+                dom.ditherStrength.parentElement.style.opacity = '0.5';
+                
+                // Trigger AI analysis if we have an image
+                if (img.src) {
+                    try {
+                        dom.stats.textContent = "AI is analyzing image...";
+                        const blob = await fetch(img.src).then(r => r.blob());
+                        const fd = new FormData();
+                        fd.append('file', blob);
+                        const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
+                        const style = await res.json();
+                        
+                        if (style && !style.error) {
+                            console.log("AI Style Analysis:", style);
+                            // Apply parameters based on AI analysis
+                            dom.sharpen.value = style.has_text_overlay ? 1.0 : 0.2;
+                            dom.ditherStrength.value = (style.gradient_complexity === "low") ? 40 : 100;
+                            // Update labels
+                            dom.sharpenAmountValue.textContent = dom.sharpen.value;
+                            dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
+                            
+                            dom.stats.textContent = `AI Mode: ${style.content_type}, Text: ${style.has_text_overlay}, Gradient: ${style.gradient_complexity}`;
+                            process();
+                        }
+                    } catch (e) {
+                        console.error("AI Analysis failed:", e);
+                        dom.stats.textContent = "AI Analysis failed, using defaults.";
+                    }
+                }
+            } else {
+                dom.gamma.parentElement.style.opacity = '1';
+                dom.sharpen.parentElement.style.opacity = '1';
+                dom.ditherStrength.parentElement.style.opacity = '1';
+                process();
+            }
+        }
+
+        function toggleRedditAIAuto() {
+            const isAuto = dom.redditAutoOptimize.checked;
+            dom.redditGamma.disabled = isAuto;
+            dom.redditDitherStrength.disabled = isAuto;
+            // We can also disable clip/cost if we want, but let's keep it simple
+            if (isAuto) {
+                dom.redditGamma.parentElement.style.opacity = '0.5';
+                dom.redditDitherStrength.parentElement.style.opacity = '0.5';
+            } else {
+                dom.redditGamma.parentElement.style.opacity = '1';
+                dom.redditDitherStrength.parentElement.style.opacity = '1';
+            }
         }
 
         async function init() {
@@ -456,7 +526,10 @@
                 if (!f) return;
                 const r = new FileReader();
                 r.onload = ev => {
-                    img.onload = () => { process(); };
+                    img.onload = () => { 
+                        if (dom.autoOptimize.checked) toggleAIAuto();
+                        else process(); 
+                    };
                     img.src = ev.target.result;
                 };
                 r.readAsDataURL(f);
@@ -520,7 +593,6 @@
             dom.fetchNowBtn.textContent = '⏳ Saving & Fetching...';
             const statusBox = document.getElementById('redditStatus');
             const originalStatus = statusBox.innerHTML;
-            statusBox.innerHTML = '<span style="color: #fbbf24;">⚡ Fetch triggered! Images are being processed in background. Please refresh preview in 5-10 seconds.</span>';
             
             try {
                 // 1. Save Config first
@@ -532,13 +604,19 @@
                 });
                 
                 if (res.ok) {
-                    setTimeout(async () => {
+                    // Poll for progress
+                    const pollInterval = setInterval(async () => {
                         await loadRedditPreview();
-                        dom.fetchNowBtn.disabled = false;
-                        dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
-                        // Keep the fetch notice for a bit then revert or update
-                        setTimeout(() => { if (statusBox.innerText.includes('Fetch triggered')) statusBox.innerHTML = originalStatus; }, 10000);
-                    }, 3000);
+                        // Check if finished
+                        const res2 = await fetch(`/admin/reddit/preview/${currentMac}`);
+                        const data = await res2.json();
+                        if (data.status !== 'fetching') {
+                            clearInterval(pollInterval);
+                            dom.fetchNowBtn.disabled = false;
+                            dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                            setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
+                        }
+                    }, 2000);
                 } else {
                     statusBox.innerHTML = '<span style="color: #ef4444;">❌ Failed to trigger fetch.</span>';
                     dom.fetchNowBtn.disabled = false;
@@ -561,7 +639,8 @@
                 dither_strength: parseInt(dom.redditDitherStrength.value) / 100,
                 apply_gamma: dom.redditGamma.checked,
                 clip_pct: parseInt(dom.redditClip.value) || 22,
-                cost_pct: parseInt(dom.redditCost.value) || 6
+                cost_pct: parseInt(dom.redditCost.value) || 6,
+                auto_optimize: dom.redditAutoOptimize.checked
             };
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.reddit_config = config;
@@ -593,17 +672,30 @@
                 if (data.posts && data.posts.length > 0) {
                     dom.redditPreview.innerHTML = data.posts.map(post => {
                         const filename = post.filename || post.bmp_filename;
+                        const labels = post.ai_labels;
+                        let labelHtml = '';
+                        if (labels) {
+                            const lStr = `${labels.content_type}, text: ${labels.has_text_overlay}, grad: ${labels.gradient_complexity}`;
+                            labelHtml = `<div class="post-labels" style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">AI: ${lStr}</div>`;
+                        }
                         return `
                             <div class="reddit-post">
                                 <img src="/api/bitmap/${Date.now()}/${filename}" 
                                      alt="${post.title || ''}" 
                                      onclick="showFull('/api/bitmap/${Date.now()}/${filename}')">
                                 <div class="post-title">${post.title || 'Reddit Post'}</div>
+                                ${labelHtml}
                             </div>
                         `;
                     }).join('');
                 } else {
                     dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
+                }
+
+                // If fetching, update status box
+                if (data.status === 'fetching') {
+                    const statusBox = document.getElementById('redditStatus');
+                    statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Starting...'}</span>`;
                 }
             } catch (e) {
                 // Silently fail if fetch is in progress or server is busy
@@ -716,6 +808,8 @@
                 dom.redditClip.value = d.reddit_config.clip_pct || 22;
                 dom.redditCost.value = d.reddit_config.cost_pct || 6;
                 dom.redditDitherStrength.value = (d.reddit_config.dither_strength !== undefined) ? d.reddit_config.dither_strength * 100 : 100;
+                dom.redditAutoOptimize.checked = d.reddit_config.auto_optimize === true;
+                toggleRedditAIAuto();
                 
                 const clipValEl = document.getElementById('redditClipValue');
                 const costValEl = document.getElementById('redditCostValue');

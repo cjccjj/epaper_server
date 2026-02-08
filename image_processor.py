@@ -1,11 +1,20 @@
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import io
 import numpy as np
 import os
+import ai_stylist
 
 # Configuration
 STRETCH_THRESHOLD = 0.33  # If padding ratio is less than this, stretch image instead of padding
+
+def sharpen_image(img, amount=1.0):
+    """Apply Laplacian-style sharpening to a PIL image."""
+    if amount <= 0:
+        return img
+    # Simple sharpening using PIL's built-in filter as a base, or custom kernel
+    # For e-paper, a slightly more aggressive UnsharpMask often works well
+    return img.filter(ImageFilter.UnsharpMask(radius=1, percent=int(amount * 100), threshold=3))
 
 # --- Global Font Loading (Done once to save I/O) ---
 def load_global_font():
@@ -333,11 +342,37 @@ def save_as_png(img, path, bit_depth=1):
 
 def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', 
                        stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1, 
-                       apply_gamma=False, dither_mode='burkes', dither_strength=1.0):
+                       apply_gamma=False, dither_mode='burkes', dither_strength=1.0,
+                       sharpen_amount=0.0, auto_optimize=False):
     # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
-    # 2. Convert to grayscale
+    ai_labels = None
+    # 2. AI Optimization (if requested)
+    if auto_optimize:
+        style = ai_stylist.analyze_image(img)
+        ai_labels = style.model_dump() if style else None
+        print(f"AI Optimization labels: {ai_labels}")
+        
+        # Mapping labels to parameters
+        if style.has_text_overlay:
+            sharpen_amount = 1.0
+        else:
+            sharpen_amount = 0.2
+            
+        if style.gradient_complexity == "low":
+            dither_strength = 0.4
+        else:
+            dither_strength = 1.0
+            
+        if style.content_type == "comic_illustration":
+            apply_gamma = True # Force gamma for comics
+            
+    # 3. Sharpening
+    if sharpen_amount > 0:
+        img = sharpen_image(img, sharpen_amount)
+
+    # 4. Convert to grayscale
     img = img.convert("L")
     data = np.array(img).astype(np.float32)
     
@@ -347,10 +382,10 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     
     data = data.astype(np.uint8)
     
-    # 3. Apply Weighted Approaching Auto-Contrast
+    # 5. Apply Weighted Approaching Auto-Contrast
     data = apply_ac(data, clip_pct, cost_pct)
     
-    # 4. Apply Dithering
+    # 6. Apply Dithering
     if bit_depth == 1:
         if dither_mode == 'fs':
             data = apply_fs(data, strength=dither_strength)
@@ -359,28 +394,26 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
         out_img = Image.fromarray(data).convert("1")
     else:
         # 2-bit (4G)
-        if dither_mode == 'fs4g':
-            data = apply_4g_fs(data, strength=dither_strength)
-        else:
-            # Fallback to FS 4G if mode is unknown or removed nd4g
-            data = apply_4g_fs(data, strength=dither_strength)
+        # Always use 4G FS as planned
+        data = apply_4g_fs(data, strength=dither_strength)
         out_img = Image.fromarray(data).convert("L")
     
-    # 5. Overlay title if provided
+    # 7. Overlay title if provided
     if title:
         out_img = overlay_title(out_img, title)
         
-    return out_img
+    return out_img, ai_labels
 
 def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', 
                       stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1,
                       clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='burkes',
-                      dither_strength=1.0):
+                      dither_strength=1.0, sharpen_amount=0.0, auto_optimize=False):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)
-    processed = process_and_dither(img, target_size, clip_pct=clip_pct, cost_pct=cost_pct, 
+    processed, ai_labels = process_and_dither(img, target_size, clip_pct=clip_pct, cost_pct=cost_pct, 
                                    resize_mode=resize_mode, stretch_threshold=stretch_threshold, 
                                    title=title, bit_depth=bit_depth, apply_gamma=apply_gamma, 
-                                   dither_mode=dither_mode, dither_strength=dither_strength)
+                                   dither_mode=dither_mode, dither_strength=dither_strength,
+                                   sharpen_amount=sharpen_amount, auto_optimize=auto_optimize)
     save_as_png(processed, output_path, bit_depth=bit_depth)
-    return output_path
+    return output_path, ai_labels
