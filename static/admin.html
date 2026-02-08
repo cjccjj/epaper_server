@@ -201,8 +201,14 @@
                     
                     <div class="control-row">
                         <div class="control-group">
-                            <label>Gamma 2.2</label>
-                            <input type="checkbox" id="gammaCorrect" style="width: auto;">
+                            <label>Gamma</label>
+                            <input type="range" id="gammaVal" min="1.0" max="2.6" step="0.2" value="2.2" oninput="dom.gammaValValue.textContent = this.value; process()">
+                            <span class="val"><span id="gammaValValue">2.2</span></span>
+                        </div>
+                        <div class="control-group">
+                            <label>Sharpen</label>
+                            <input type="range" id="sharpenAmount" min="0" max="2.0" step="0.1" value="0" oninput="dom.sharpenAmountValue.textContent = this.value; process()">
+                            <span class="val"><span id="sharpenAmountValue">0.0</span></span>
                         </div>
                         <div class="control-group">
                             <label>Clip %</label>
@@ -358,7 +364,10 @@
             upload: document.getElementById('upload'),
             clip: document.getElementById('clip'),
             cost: document.getElementById('cost'),
-            gamma: document.getElementById('gammaCorrect'),
+            gamma: document.getElementById('gammaVal'),
+            gammaValValue: document.getElementById('gammaValValue'),
+            sharpen: document.getElementById('sharpenAmount'),
+            sharpenAmountValue: document.getElementById('sharpenAmountValue'),
             ditherMode: document.getElementById('ditherMode'),
             stats: document.getElementById('stats'),
             cOri: document.getElementById('cOriginal'),
@@ -762,17 +771,42 @@
 
             gOri.drawImage(img, ox, oy, nw, nh);
 
-            // 2. Grayscale & Alpha normalization
+            // 2. Grayscale & Sharpening & Gamma normalization
             const imageData = gOri.getImageData(0, 0, tw, th);
             const data = imageData.data;
-            const doGamma = dom.gamma.checked;
+            
+            // First pass: Grayscale
             for (let i = 0; i < data.length; i += 4) {
-                let g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-                if (doGamma) {
-                    g = 255 * Math.pow(g / 255, 1 / 2.2);
-                }
+                const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
                 data[i] = data[i+1] = data[i+2] = g;
-                data[i+3] = 255; // Force full opacity
+                data[i+3] = 255;
+            }
+
+            // Sharpening (Simple 3x3 Laplacian)
+            const shAmount = parseFloat(dom.sharpen.value) || 0;
+            if (shAmount > 0) {
+                const copy = new Uint8ClampedArray(data);
+                for (let y = 1; y < th - 1; y++) {
+                    for (let x = 1; x < tw - 1; x++) {
+                        const i = (y * tw + x) * 4;
+                        const center = copy[i];
+                        const up = copy[((y - 1) * tw + x) * 4];
+                        const down = copy[((y + 1) * tw + x) * 4];
+                        const left = copy[(y * tw + (x - 1)) * 4];
+                        const right = copy[(y * tw + (x + 1)) * 4];
+                        const sharpened = center + (center * 4 - up - down - left - right) * shAmount;
+                        data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, sharpened));
+                    }
+                }
+            }
+
+            // Gamma Correction
+            const gammaVal = parseFloat(dom.gamma.value) || 1.0;
+            if (gammaVal !== 1.0) {
+                for (let i = 0; i < data.length; i += 4) {
+                    const g = 255 * Math.pow(data[i] / 255, 1 / gammaVal);
+                    data[i] = data[i+1] = data[i+2] = g;
+                }
             }
 
             // 3. Weighted Approaching Auto-Contrast (W-Approaching)

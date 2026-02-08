@@ -176,8 +176,15 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
-                <label title="Gamma Correction (2.2)" style="flex: 0;">
-                    γ: <input type="checkbox" class="gamma-check">
+                <label title="Gamma Correction" style="flex: 0;">
+                    γ: 
+                    <select class="gamma-sel" style="width: 45px; flex: none;">
+                        <option value="1.0">None</option>
+                        <option value="2.2">2.2</option>
+                        <option value="2.0">2.0</option>
+                        <option value="1.8">1.8</option>
+                        <option value="1.6">1.6</option>
+                    </select>
                 </label>
                 <label>
                     Contrast:
@@ -188,14 +195,23 @@ input[type="file"] {
                         <option value="w-approaching">W-Approaching</option>
                     </select>
                 </label>
-                <label>
+                <label title="Dither:">
                     Dither:
                     <select class="dither-method">
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
                         <option value="4g_fs">4G_FS</option>
+                        <option value="ep_4g">EP_4G</option>
                     </select>
+                </label>
+                <label title="Sharpening strength">
+                    Sh: <span class="sharpen-val">0.0</span>
+                    <input type="range" class="sharpen-slider" min="0" max="2.0" step="0.1" value="0">
+                </label>
+                <label title="Dithering Strength">
+                    S: <span class="strength-val">1.0</span>
+                    <input type="range" class="strength-slider" min="0.2" max="1.8" step="0.1" value="1.0">
                 </label>
             </div>
             
@@ -236,8 +252,15 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
-                <label title="Gamma Correction (2.2)" style="flex: 0;">
-                    γ: <input type="checkbox" class="gamma-check">
+                <label title="Gamma Correction" style="flex: 0;">
+                    γ: 
+                    <select class="gamma-sel" style="width: 45px; flex: none;">
+                        <option value="1.0">None</option>
+                        <option value="2.2">2.2</option>
+                        <option value="2.0">2.0</option>
+                        <option value="1.8">1.8</option>
+                        <option value="1.6">1.6</option>
+                    </select>
                 </label>
                 <label>
                     Contrast:
@@ -248,14 +271,23 @@ input[type="file"] {
                         <option value="w-approaching" selected>W-Approaching</option>
                     </select>
                 </label>
-                <label>
+                <label title="Dither:">
                     Dither:
                     <select class="dither-method">
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
                         <option value="4g_fs">4G_FS</option>
+                        <option value="ep_4g">EP_4G</option>
                     </select>
+                </label>
+                <label title="Sharpening strength">
+                    Sh: <span class="sharpen-val">0.0</span>
+                    <input type="range" class="sharpen-slider" min="0" max="2.0" step="0.1" value="0">
+                </label>
+                <label title="Dithering Strength">
+                    S: <span class="strength-val">1.0</span>
+                    <input type="range" class="strength-slider" min="0.2" max="1.8" step="0.1" value="1.0">
                 </label>
             </div>
             
@@ -296,8 +328,15 @@ input[type="file"] {
         
         <div class="settings-panel">
             <div class="control-row">
-                <label title="Gamma Correction (2.2)" style="flex: 0;">
-                    γ: <input type="checkbox" class="gamma-check">
+                <label title="Gamma Correction" style="flex: 0;">
+                    γ: 
+                    <select class="gamma-sel" style="width: 45px; flex: none;">
+                        <option value="1.0">None</option>
+                        <option value="2.2">2.2</option>
+                        <option value="2.0">2.0</option>
+                        <option value="1.8">1.8</option>
+                        <option value="1.6">1.6</option>
+                    </select>
                 </label>
                 <label>
                     Contrast:
@@ -308,14 +347,23 @@ input[type="file"] {
                         <option value="w-approaching">W-Approaching</option>
                     </select>
                 </label>
-                <label>
+                <label title="Dither:">
                     Dither:
                     <select class="dither-method">
                         <option value="fs">FS</option>
                         <option value="atkinson">Atkinson</option>
                         <option value="burkes">Burkes</option>
                         <option value="4g_fs">4G_FS</option>
+                        <option value="ep_4g">EP_4G</option>
                     </select>
+                </label>
+                <label title="Sharpening strength">
+                    Sh: <span class="sharpen-val">0.0</span>
+                    <input type="range" class="sharpen-slider" min="0" max="2.0" step="0.1" value="0">
+                </label>
+                <label title="Dithering Strength">
+                    S: <span class="strength-val">1.0</span>
+                    <input type="range" class="strength-slider" min="0.2" max="1.8" step="0.1" value="1.0">
                 </label>
             </div>
             
@@ -397,12 +445,35 @@ const Processor = {
         }
     },
 
-    applyGamma(data) {
-        const gamma = 1 / 2.2;
+    applyGamma(data, gammaValue) {
+        if (gammaValue === 1.0) return;
+        const invGamma = 1 / gammaValue;
         for (let i = 0; i < data.length; i += 4) {
             const v = data[i] / 255;
-            const g = Math.pow(v, gamma) * 255;
+            const g = Math.pow(v, invGamma) * 255;
             data[i] = data[i+1] = data[i+2] = this.clamp(g);
+        }
+    },
+
+    sharpen(data, w, h, amount) {
+        if (amount <= 0) return;
+        const copy = new Uint8ClampedArray(data);
+        for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+                const i = (y * w + x) * 4;
+                // Simple 3x3 Laplacian kernel for sharpening
+                // [ 0, -1,  0]
+                // [-1,  5, -1]
+                // [ 0, -1,  0]
+                const center = copy[i];
+                const up = copy[((y - 1) * w + x) * 4];
+                const down = copy[((y + 1) * w + x) * 4];
+                const left = copy[(y * w + (x - 1)) * 4];
+                const right = copy[(y * w + (x + 1)) * 4];
+                
+                const sharpened = center + (center * 4 - up - down - left - right) * amount;
+                data[i] = data[i+1] = data[i+2] = this.clamp(sharpened);
+            }
         }
     },
 
@@ -476,17 +547,15 @@ const Processor = {
         return { left, right };
     },
 
-    ditherFS(d, w, h) {
+    ditherFS(d, w, h, strength = 1.0) {
         for (let y = 0; y < h; y++) {
             const ltr = y % 2 === 0;
             for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
                 const i = (y * w + x) * 4;
                 const old = d[i];
                 const nw = old < 128 ? 0 : 255;
-                const err = old - nw;
-                d[i] = nw;
-                d[i+1] = nw;
-                d[i+2] = nw;
+                const err = (old - nw) * strength;
+                d[i] = d[i+1] = d[i+2] = nw;
 
                 const add = (nx, ny, f) => {
                     if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
@@ -511,13 +580,63 @@ const Processor = {
         }
     },
 
-    ditherAtkinson(d, w, h) {
+    ditherEP_4G(d, w, h, strength = 1.0) {
+        // "Punchy" E-paper mode:
+        // We use the full 0-255 range for the preview, but space the levels 
+        // according to the hardware steps (15, 30, 50, 70).
+        // Relative spacing: 0, (15/55)*255, (35/55)*255, 255
+        const levels = [0, 69, 162, 255];
+        
+        for (let y = 0; y < h; y++) {
+            const ltr = y % 2 === 0;
+            for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
+                const i = (y * w + x) * 4;
+                const old = d[i];
+                
+                // Find closest hardware level
+                let nw = levels[0];
+                let minDist = Math.abs(old - levels[0]);
+                for (let k = 1; k < levels.length; k++) {
+                    const dist = Math.abs(old - levels[k]);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nw = levels[k];
+                    }
+                }
+
+                const err = (old - nw) * strength;
+                d[i] = d[i+1] = d[i+2] = nw;
+
+                const add = (nx, ny, f) => {
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const j = (ny * w + nx) * 4;
+                        const v = d[j] + err * f;
+                        d[j] = d[j+1] = d[j+2] = this.clamp(v);
+                    }
+                };
+
+                if (ltr) {
+                    add(x + 1, y,     7 / 16);
+                    add(x - 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x + 1, y + 1, 1 / 16);
+                } else {
+                    add(x - 1, y,     7 / 16);
+                    add(x + 1, y + 1, 3 / 16);
+                    add(x,     y + 1, 5 / 16);
+                    add(x - 1, y + 1, 1 / 16);
+                }
+            }
+        }
+    },
+
+    ditherAtkinson(d, w, h, strength = 1.0) {
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const i = (y * w + x) * 4;
                 const old = d[i];
                 const nw = old < 128 ? 0 : 255;
-                const err = (old - nw) / 8; // Atkinson uses 1/8 for all weights
+                const err = ((old - nw) / 8) * strength; // Atkinson uses 1/8 for all weights
                 d[i] = d[i+1] = d[i+2] = nw;
 
                 const add = (nx, ny) => {
@@ -538,13 +657,13 @@ const Processor = {
         }
     },
 
-    ditherBurkes(d, w, h) {
+    ditherBurkes(d, w, h, strength = 1.0) {
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const i = (y * w + x) * 4;
                 const old = d[i];
                 const nw = old < 128 ? 0 : 255;
-                const err = (old - nw) / 32;
+                const err = ((old - nw) / 32) * strength;
                 d[i] = d[i+1] = d[i+2] = nw;
 
                 const add = (nx, ny, f) => {
@@ -566,7 +685,7 @@ const Processor = {
         }
     },
 
-    dither4G_FS(d, w, h) {
+    dither4G_FS(d, w, h, strength = 1.0) {
         for (let y = 0; y < h; y++) {
             const ltr = y % 2 === 0;
             for (let x = ltr ? 0 : w - 1; ltr ? x < w : x >= 0; ltr ? x++ : x--) {
@@ -574,7 +693,7 @@ const Processor = {
                 const old = d[i];
                 // Quantize to 4 levels: 0, 85, 170, 255
                 const nw = Math.round(old / 85) * 85;
-                const err = old - nw;
+                const err = (old - nw) * strength;
                 d[i] = d[i+1] = d[i+2] = nw;
 
                 const add = (nx, ny, f) => {
@@ -631,13 +750,17 @@ class DitheringPipeline {
         this.container = document.getElementById(id);
         
         // Settings
-        this.gammaCheck = this.container.querySelector('.gamma-check');
+        this.gammaSel = this.container.querySelector('.gamma-sel');
         this.methodSel = this.container.querySelector('.ac-method');
         this.clipSlider = this.container.querySelector('.clip-slider');
         this.costSlider = this.container.querySelector('.cost-slider');
         this.ditherSel = this.container.querySelector('.dither-method');
+        this.strengthSlider = this.container.querySelector('.strength-slider');
+        this.sharpenSlider = this.container.querySelector('.sharpen-slider');
         this.clipValLabel = this.container.querySelector('.clip-val');
         this.costValLabel = this.container.querySelector('.cost-val');
+        this.strengthValLabel = this.container.querySelector('.strength-val');
+        this.sharpenValLabel = this.container.querySelector('.sharpen-val');
         this.clipLabel = this.container.querySelector('.clip-label');
         this.costLabel = this.container.querySelector('.cost-label');
         this.nonePlaceholder = this.container.querySelector('.none-placeholder');
@@ -657,7 +780,7 @@ class DitheringPipeline {
     }
 
     initEvents() {
-        [this.gammaCheck, this.methodSel, this.clipSlider, this.costSlider, this.ditherSel].forEach(el => {
+        [this.gammaSel, this.methodSel, this.clipSlider, this.costSlider, this.ditherSel, this.strengthSlider, this.sharpenSlider].forEach(el => {
             el.addEventListener('input', () => {
                 this.updateLabels();
                 this.updateVisibility();
@@ -669,6 +792,8 @@ class DitheringPipeline {
     updateLabels() {
         this.clipValLabel.textContent = this.clipSlider.value;
         this.costValLabel.textContent = this.costSlider.value;
+        this.strengthValLabel.textContent = this.strengthSlider.value;
+        this.sharpenValLabel.textContent = this.sharpenSlider.value;
     }
 
     updateVisibility() {
@@ -693,11 +818,18 @@ class DitheringPipeline {
         Processor.grayscale(grayData.data);
 
         // Gamma Correction
-        if (this.gammaCheck.checked) {
-            Processor.applyGamma(grayData.data);
+        const gammaValue = parseFloat(this.gammaSel.value);
+        if (gammaValue !== 1.0) {
+            Processor.applyGamma(grayData.data, gammaValue);
         }
 
         this.gGrayOri.putImageData(grayData, 0, 0);
+
+        // Sharpening
+        const sharpenAmount = parseFloat(this.sharpenSlider.value);
+        if (sharpenAmount > 0) {
+            Processor.sharpen(grayData.data, w, h, sharpenAmount);
+        }
 
         // Histogram & Potential Damage (calculated once per run or once per image? 
         // Here we do it per run for simplicity, but it's identical for both pipelines)
@@ -718,14 +850,17 @@ class DitheringPipeline {
         // 3. Dithering
         let ditherData = new ImageData(new Uint8ClampedArray(acData.data), w, h);
         const dMethod = this.ditherSel.value;
+        const strength = Number(this.strengthSlider.value);
         if (dMethod === 'fs') {
-            Processor.ditherFS(ditherData.data, w, h);
+            Processor.ditherFS(ditherData.data, w, h, strength);
         } else if (dMethod === 'atkinson') {
-            Processor.ditherAtkinson(ditherData.data, w, h);
+            Processor.ditherAtkinson(ditherData.data, w, h, strength);
         } else if (dMethod === 'burkes') {
-            Processor.ditherBurkes(ditherData.data, w, h);
+            Processor.ditherBurkes(ditherData.data, w, h, strength);
         } else if (dMethod === '4g_fs') {
-            Processor.dither4G_FS(ditherData.data, w, h);
+            Processor.dither4G_FS(ditherData.data, w, h, strength);
+        } else if (dMethod === 'ep_4g') {
+            Processor.ditherEP_4G(ditherData.data, w, h, strength);
         }
         this.gDither.putImageData(ditherData, 0, 0);
 
