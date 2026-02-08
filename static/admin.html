@@ -101,7 +101,8 @@
 
         .config-actions { display: flex; gap: 10px; }
         
-        .stats { font-size: 10px; color: var(--text-dim); margin-left: auto; }
+        .stats { font-size: 10px; color: var(--text-dim); }
+        .reddit-status-row { font-size: 10px; color: var(--text-dim); margin-top: -4px; margin-bottom: 4px; display: flex; gap: 10px; }
         .hidden { display: none !important; }
 
         /* Dish Selector Row */
@@ -196,14 +197,14 @@
                     <div class="size-row">
                         <input type="file" id="upload" accept="image/*" style="width: 180px;">
                         <button id="addBtn" class="btn-add">Add to Gallery</button>
-                        <div class="stats" id="stats"></div>
+                        <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px;">✨ AI Optimize</button>
+                        <div class="stats" id="stats" style="margin-left: 8px;"></div>
                     </div>
                     
                     <div class="control-row">
-                        <div class="control-group">
+                        <div class="control-group" style="display: none;">
                             <label>AI Stylist</label>
-                            <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">✨ Optimize</button>
-                            <input type="checkbox" id="autoOptimize" style="display: none;">
+                            <input type="checkbox" id="autoOptimize">
                         </div>
                         <div class="control-group">
                             <label>Gamma</label>
@@ -228,7 +229,6 @@
                         <div class="control-group">
                             <label>Dither</label>
                             <select id="ditherMode" onchange="toggleStrengthSlider(); process()">
-                                <option value="burkes">Burkes (BW)</option>
                                 <option value="fs">Floyd-Steinberg (BW)</option>
                                 <option value="fs4g">4G FS (Gray)</option>
                             </select>
@@ -254,14 +254,16 @@
             </div>
 
             <div id="panel-reddit" class="tab-content hidden">
-                <div class="reddit-config-container">
+                <div class="reddit-config-container" style="max-width: 600px;">
                     <h3>Reddit Configuration</h3>
                     
+                    <div class="reddit-status-row">
+                        <span id="redditStatus">Ready</span>
+                        <span>Fetch: <span id="lastFetchTime">Never</span></span>
+                        <span>Rate: <span id="fetchRate">?</span>h</span>
+                    </div>
+
                     <div class="config-row">
-                        <div class="config-group" style="flex: 0; min-width: 120px;">
-                            <label class="compact-label">AI Auto-Optimize</label>
-                            <input type="checkbox" id="redditAutoOptimize" style="width: auto;">
-                        </div>
                         <div class="config-group">
                             <label>Subreddit</label>
                             <select id="redditSub">
@@ -293,8 +295,34 @@
                             </select>
                         </div>
                         <div class="config-group" style="flex: 0; min-width: 80px;">
-                            <label class="compact-label">Title</label>
+                            <label class="compact-label">Show Title</label>
                             <input type="checkbox" id="redditShowTitle">
+                        </div>
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label>Gamma</label>
+                            <input type="checkbox" id="redditGamma">
+                            <span style="font-size: 10px; color: var(--text-dim);">[1, 2.2]</span>
+                        </div>
+                        <div class="config-group">
+                            <label>Sharpen</label>
+                            <input type="range" id="redditSharpen" min="0" max="2.0" step="0.1" value="0" oninput="document.getElementById('redditSharpenValue').textContent = this.value">
+                            <span class="val" id="redditSharpenValue">0.0</span>
+                        </div>
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label>Clip %</label>
+                            <input type="range" id="redditClip" min="0" max="60" value="22">
+                            <span class="val" id="redditClipValue">22</span>
+                        </div>
+                        <div class="config-group">
+                            <label>Cost %</label>
+                            <input type="range" id="redditCost" min="0" max="60" value="6">
+                            <span class="val" id="redditCostValue">6</span>
                         </div>
                     </div>
 
@@ -303,44 +331,25 @@
                             <label>Bit Depth</label>
                             <select id="redditBitDepth" onchange="syncRedditBitDepth()">
                                 <option value="1">1-bit (BW)</option>
-                                <option value="2">2-bit (4G Gray)</option>
+                                <option value="2">2-bit (4G)</option>
                             </select>
                         </div>
-                        <div class="config-group" style="flex: 0; min-width: 80px;">
-                            <label class="compact-label">Gamma</label>
-                            <input type="checkbox" id="redditGamma">
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Clip %</label>
-                            <input type="range" id="redditClip" min="0" max="60" value="22">
-                            <span class="val"><span id="redditClipValue">22</span>%</span>
-                        </div>
-                        <div class="config-group">
-                            <label>Cost %</label>
-                            <input type="range" id="redditCost" min="0" max="60" value="6">
-                            <span class="val"><span id="redditCostValue">6</span>%</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
                         <div class="config-group">
                             <label>Dither %</label>
-                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="dom.redditDitherStrengthValue.textContent = this.value">
-                            <span class="val"><span id="redditDitherStrengthValue">100</span>%</span>
+                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="document.getElementById('redditDitherStrengthValue').textContent = this.value">
+                            <span class="val" id="redditDitherStrengthValue">100</span>
                         </div>
                     </div>
 
-                    <div id="redditStatus" style="font-size: 10px; color: var(--text-dim); padding: 4px 8px; background: var(--panel); border-radius: 4px; border: 1px solid var(--border); display: flex; justify-content: space-between;">
-                        <span>Last Fetch: <span id="lastFetchTime">Never</span></span>
-                        <span>Rate: every <span id="fetchRate">3</span>h</span>
-                    </div>
-
-                    <div class="config-actions" style="display: flex; gap: 8px;">
-                        <button class="btn-save" onclick="saveRedditConfig()" style="margin: 0; flex: 1; height: 32px; font-size: 12px;">Save Config</button>
-                        <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()" style="margin: 0; flex: 1.5; height: 32px; font-size: 12px;">⚡ Save & Fetch Now</button>
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label class="compact-label">AI Auto-Optimize</label>
+                            <input type="checkbox" id="redditAutoOptimize" style="width: auto;">
+                        </div>
+                        <div class="config-actions" style="flex: 2; justify-content: flex-end;">
+                            <button class="btn-save" onclick="saveRedditConfig()" style="height: 32px; font-size: 12px; margin: 0;">Save Config</button>
+                            <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()" style="height: 32px; font-size: 12px; margin: 0; margin-left: 8px;">Save and Fetch Now</button>
+                        </div>
                     </div>
                 </div>
 
@@ -382,6 +391,7 @@
             cOri: document.getElementById('cOriginal'),
             cDit: document.getElementById('cDither'),
             addBtn: document.getElementById('addBtn'),
+            aiOptimizeBtn: document.getElementById('aiOptimizeBtn'),
             overlay: document.getElementById('overlay'),
             overlayImg: document.getElementById('overlayImg'),
             redditSub: document.getElementById('redditSub'),
@@ -398,6 +408,8 @@
             redditDitherStrengthValue: document.getElementById('redditDitherStrengthValue'),
             autoOptimize: document.getElementById('autoOptimize'),
             redditAutoOptimize: document.getElementById('redditAutoOptimize'),
+            redditSharpen: document.getElementById('redditSharpen'),
+            redditSharpenValue: document.getElementById('redditSharpenValue'),
             strengthGroup: document.getElementById('strengthGroup')
         };
 
@@ -412,65 +424,83 @@
         }
 
         async function toggleAIAuto() {
-            // For Gallery, we treat this as a "one-shot" optimization button if it's called via the button
-            // but we also keep the checkbox logic for state management.
-            const isAuto = true; // Button click always triggers optimization
-            
-            // Trigger AI analysis if we have an image
-            if (img.src) {
-                try {
-                    dom.stats.textContent = "AI is analyzing image...";
-                    const blob = await fetch(img.src).then(r => r.blob());
-                    const fd = new FormData();
-                    fd.append('file', blob);
-                    const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
-                    const style = await res.json();
+            // For Gallery, this is a "one-shot" optimization button.
+            if (!img.src) {
+                dom.stats.textContent = "Please select an image first.";
+                return;
+            }
+
+            const originalBtnText = dom.aiOptimizeBtn.textContent;
+            try {
+                dom.aiOptimizeBtn.disabled = true;
+                dom.aiOptimizeBtn.textContent = "⌛ Analyzing...";
+                dom.stats.textContent = "AI is analyzing image...";
+                
+                // Create a small version of the image for AI analysis
+                const tempCanvas = document.createElement('canvas');
+                const ctx = tempCanvas.getContext('2d');
+                const maxDim = 400;
+                let w = img.width, h = img.height;
+                if (w > h) { if (w > maxDim) { h *= maxDim/w; w = maxDim; } }
+                else { if (h > maxDim) { w *= maxDim/h; h = maxDim; } }
+                tempCanvas.width = w; tempCanvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+                
+                const blob = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/jpeg', 0.8));
+                const fd = new FormData();
+                fd.append('file', blob, 'analyze.jpg');
+                
+                const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
+                const style = await res.json();
+                
+                if (style && !style.error) {
+                    console.log("AI Style Analysis:", style);
+                    // Apply parameters based on AI analysis logic (mirroring backend)
+                    let sh = 0.2;
+                    if (style.has_text_overlay || style.content_type === "text_heavy") sh = 1.0;
+                    else if (style.content_type === "comic_illustration") sh = 0.5;
                     
-                    if (style && !style.error) {
-                        console.log("AI Style Analysis:", style);
-                        // Apply parameters based on AI analysis logic (mirroring backend)
-                        let sh = 0.2;
-                        if (style.has_text_overlay || style.content_type === "text_heavy") sh = 1.0;
-                        else if (style.content_type === "comic_illustration") sh = 0.5;
-                        
-                        let dt = 1.0;
-                        if (style.gradient_complexity === "low") dt = 0.4;
-                        
-                        let gm = (style.content_type === "comic_illustration");
+                    let dt = 1.0;
+                    if (style.gradient_complexity === "low") dt = 0.4;
+                    
+                    let gm = (style.content_type === "comic_illustration");
 
-                        // Update UI sliders to match AI choice
-                        dom.sharpen.value = sh;
-                        dom.ditherStrength.value = dt * 100;
-                        dom.gamma.value = gm ? 2.2 : 1.0; // Use 1.0 for linear/no-gamma
+                    // Update UI sliders to match AI choice
+                    dom.sharpen.value = sh;
+                    dom.ditherStrength.value = dt * 100;
+                    dom.gamma.value = gm ? 2.2 : 1.0; 
+                    
+                    // Set dither mode to FS for BW if needed.
+                    if (dom.ditherMode.value !== 'fs4g') dom.ditherMode.value = 'fs';
+                    toggleStrengthSlider();
 
-                        // Update labels
-                        dom.sharpenAmountValue.textContent = dom.sharpen.value;
-                        dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
-                        dom.gammaValValue.textContent = dom.gamma.value;
-                        
-                        const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gm?'2.2':'None'}`;
-                        dom.stats.textContent = `AI Mode: ${style.content_type}, Text: ${style.has_text_overlay}, Grad: ${style.gradient_complexity} | ${applied}`;
-                        process();
-                    }
-                } catch (e) {
-                    console.error("AI Analysis failed:", e);
-                    dom.stats.textContent = "AI Analysis failed.";
+                    // Update labels
+                    dom.sharpenAmountValue.textContent = dom.sharpen.value;
+                    dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
+                    dom.gammaValValue.textContent = dom.gamma.value;
+                    
+                    const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gm?'2.2':'None'}`;
+                    dom.stats.textContent = `AI: ${style.content_type}, text:${style.has_text_overlay}, grad:${style.gradient_complexity} | ${applied}`;
+                    process();
+                } else {
+                    dom.stats.textContent = "AI Analysis failed: " + (style.error || "Unknown error");
                 }
+            } catch (e) {
+                console.error("AI Analysis failed:", e);
+                dom.stats.textContent = "AI Analysis failed.";
+            } finally {
+                dom.aiOptimizeBtn.disabled = false;
+                dom.aiOptimizeBtn.textContent = originalBtnText;
             }
         }
 
         function toggleRedditAIAuto() {
             const isAuto = dom.redditAutoOptimize.checked;
-            dom.redditGamma.disabled = isAuto;
-            dom.redditDitherStrength.disabled = isAuto;
-            // We can also disable clip/cost if we want, but let's keep it simple
-            if (isAuto) {
-                dom.redditGamma.parentElement.style.opacity = '0.5';
-                dom.redditDitherStrength.parentElement.style.opacity = '0.5';
-            } else {
-                dom.redditGamma.parentElement.style.opacity = '1';
-                dom.redditDitherStrength.parentElement.style.opacity = '1';
-            }
+            const elements = [dom.redditGamma, dom.redditSharpen, dom.redditDitherStrength];
+            elements.forEach(el => {
+                el.disabled = isAuto;
+                if (el.parentElement) el.parentElement.style.opacity = isAuto ? '0.5' : '1';
+            });
         }
 
         async function init() {
@@ -512,7 +542,7 @@
                 });
             });
 
-            [dom.clip, dom.cost, dom.redditClip, dom.redditCost].forEach(i => {
+            [dom.clip, dom.cost, dom.redditClip, dom.redditCost, dom.redditSharpen, dom.redditDitherStrength].forEach(i => {
                 i.addEventListener('input', () => {
                     let displayVal = i.value;
                     const valEl = document.getElementById(i.id+'Value');
@@ -650,6 +680,7 @@
                 bit_depth: parseInt(dom.redditBitDepth.value) || 1,
                 dither_strength: parseInt(dom.redditDitherStrength.value) / 100,
                 apply_gamma: dom.redditGamma.checked,
+                sharpen_amount: parseFloat(dom.redditSharpen.value) || 0,
                 clip_pct: parseInt(dom.redditClip.value) || 22,
                 cost_pct: parseInt(dom.redditCost.value) || 6,
                 auto_optimize: dom.redditAutoOptimize.checked
@@ -675,7 +706,7 @@
                 
                 // Update status info
                 if (data.last_update_formatted) {
-                    document.getElementById('lastFetchTime').textContent = `${data.last_update_formatted} (${data.server_tz})`;
+                    document.getElementById('lastFetchTime').textContent = data.last_update_formatted;
                 }
                 if (data.rate_hours) {
                     document.getElementById('fetchRate').textContent = data.rate_hours;
@@ -685,14 +716,18 @@
                     dom.redditPreview.innerHTML = data.posts.map(post => {
                         const filename = post.filename || post.bmp_filename;
                         const labels = post.ai_labels;
-                        let labelHtml = '';
+                        let debugHtml = '';
                         if (labels) {
                             const lStr = `${labels.content_type}, text: ${labels.has_text_overlay}, grad: ${labels.gradient_complexity}`;
-                            let appliedStr = '';
+                            let appliedStr = 'No AI settings applied';
                             if (labels.applied) {
-                                appliedStr = ` | sh:${labels.applied.sharpen} dt:${labels.applied.dither} gm:${labels.applied.gamma}`;
+                                appliedStr = `sh:${labels.applied.sharpen} dt:${labels.applied.dither} gm:${labels.applied.gamma}`;
                             }
-                            labelHtml = `<div class="post-labels" style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">AI: ${lStr}${appliedStr}</div>`;
+                            debugHtml = `
+                                <div class="post-debug" style="font-size: 10px; color: var(--text-dim); margin-top: 4px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 3px;">
+                                    <div>AI: ${lStr}</div>
+                                    <div style="color: var(--primary); font-weight: bold;">${appliedStr}</div>
+                                </div>`;
                         }
                         return `
                             <div class="reddit-post">
@@ -700,7 +735,7 @@
                                      alt="${post.title || ''}" 
                                      onclick="showFull('/api/bitmap/${Date.now()}/${filename}')">
                                 <div class="post-title">${post.title || 'Reddit Post'}</div>
-                                ${labelHtml}
+                                ${debugHtml}
                             </div>
                         `;
                     }).join('');
@@ -716,7 +751,6 @@
                     }
                 }
             } catch (e) {
-                // Silently fail if fetch is in progress or server is busy
                 console.log('Reddit preview load skipped or failed:', e);
             }
         }
@@ -724,19 +758,22 @@
         function syncRedditBitDepth() {
             const depth = dom.redditBitDepth.value;
             if (depth === "2") {
-                // 2-bit defaults: gamma 2.2, 20% clip, 6% cost
+                // 2-bit defaults: gamma on, 20% clip, 6% cost, 0.2 sharpen
                 dom.redditGamma.checked = true;
                 dom.redditClip.value = 20;
                 dom.redditCost.value = 6;
+                dom.redditSharpen.value = 0.2;
             } else {
-                // 1-bit defaults: no gamma, 22% clip, 6% cost
+                // 1-bit defaults: no gamma, 22% clip, 6% cost, 0 sharpen
                 dom.redditGamma.checked = false;
                 dom.redditClip.value = 22;
                 dom.redditCost.value = 6;
+                dom.redditSharpen.value = 0;
             }
             // Trigger value updates for labels
-            document.getElementById('redditClipValue').textContent = dom.redditClip.value;
-            document.getElementById('redditCostValue').textContent = dom.redditCost.value;
+            if (dom.redditClipValue) dom.redditClipValue.textContent = dom.redditClip.value;
+            if (dom.redditCostValue) dom.redditCostValue.textContent = dom.redditCost.value;
+            if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = dom.redditSharpen.value;
         }
 
         async function fetchDevices() {
@@ -823,30 +860,31 @@
                 dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
                 dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
                 dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
+                dom.redditSharpen.value = d.reddit_config.sharpen_amount || 0;
                 dom.redditClip.value = d.reddit_config.clip_pct || 22;
                 dom.redditCost.value = d.reddit_config.cost_pct || 6;
                 dom.redditDitherStrength.value = (d.reddit_config.dither_strength !== undefined) ? d.reddit_config.dither_strength * 100 : 100;
                 dom.redditAutoOptimize.checked = d.reddit_config.auto_optimize === true;
                 toggleRedditAIAuto();
                 
-                const clipValEl = document.getElementById('redditClipValue');
-                const costValEl = document.getElementById('redditCostValue');
-                const strengthValEl = document.getElementById('redditDitherStrengthValue');
-                if (clipValEl) clipValEl.textContent = dom.redditClip.value;
-                if (costValEl) costValEl.textContent = dom.redditCost.value;
-                if (strengthValEl) strengthValEl.textContent = dom.redditDitherStrength.value;
+                if (dom.redditClipValue) dom.redditClipValue.textContent = dom.redditClip.value;
+                if (dom.redditCostValue) dom.redditCostValue.textContent = dom.redditCost.value;
+                if (dom.redditDitherStrengthValue) dom.redditDitherStrengthValue.textContent = dom.redditDitherStrength.value;
+                if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = dom.redditSharpen.value;
             } else {
                 // Default values if no config
                 dom.redditSub.value = '';
                 dom.redditShowTitle.checked = true;
                 dom.redditBitDepth.value = "1";
                 dom.redditGamma.checked = false;
+                dom.redditSharpen.value = 0;
                 dom.redditClip.value = 22;
                 dom.redditCost.value = 6;
                 dom.redditDitherStrength.value = 100;
-                document.getElementById('redditClipValue').textContent = "22";
-                document.getElementById('redditCostValue').textContent = "6";
-                document.getElementById('redditDitherStrengthValue').textContent = "100";
+                if (dom.redditClipValue) dom.redditClipValue.textContent = "22";
+                if (dom.redditCostValue) dom.redditCostValue.textContent = "6";
+                if (dom.redditDitherStrengthValue) dom.redditDitherStrengthValue.textContent = "100";
+                if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = "0.0";
             }
         }
 
@@ -1015,7 +1053,7 @@
                         }
                     }
                 }
-            } else if (dMode === 'fs') {
+            } else {
                 // Floyd-Steinberg BW
                 for (let y = 0; y < th; y++) {
                     const ltr = y % 2 === 0;
@@ -1045,31 +1083,6 @@
                         }
                     }
                 }
-            } else {
-                // Default: Burkes BW
-                for (let y = 0; y < th; y++) {
-                    for (let x = 0; x < tw; x++) {
-                        const i = (y * tw + x) * 4;
-                        const old = ditherData[i];
-                        const nw_val = old < 128 ? 0 : 255;
-                        const err = (old - nw_val) / 32;
-                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
-                        const add = (nx, ny, f) => {
-                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-                                const j = (ny * tw + nx) * 4;
-                                const v = ditherData[j] + err * f;
-                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
-                            }
-                        };
-                        add(x + 1, y,     8);
-                        add(x + 2, y,     4);
-                        add(x - 2, y + 1, 2);
-                        add(x - 1, y + 1, 4);
-                        add(x,     y + 1, 8);
-                        add(x + 1, y + 1, 4);
-                        add(x + 2, y + 1, 2);
-                    }
-                }
             }
 
             gDit.putImageData(new ImageData(ditherData, tw, th), 0, 0);
@@ -1083,7 +1096,7 @@
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             
-            const isBW = (ditherMode === 'burkes' || ditherMode === 'fs');
+            const isBW = (ditherMode === 'fs');
             const bitDepth = isBW ? 1 : 2;
             
             // 1. Prepare Palette and Indices

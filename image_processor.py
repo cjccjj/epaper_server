@@ -138,42 +138,6 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     data = np.clip((data - left) * scale, 0, 255)
     return data.astype(np.uint8)
 
-def apply_burkes(data):
-    """Burkes Dithering logic ported from JS. Standard Error Diffusion."""
-    h, w = data.shape
-    out = data.astype(np.float32)
-    
-    # Note: Error diffusion is sequential and hard to vectorize purely.
-    # This loop is the bottleneck but necessary for this algorithm.
-    for y in range(h):
-        for x in range(w):
-            old_val = out[y, x]
-            new_val = 0 if old_val < 128 else 255
-            err = (old_val - new_val) / 32.0
-            out[y, x] = new_val
-            
-            # Unrolled inner calls for slight speedup
-            if x + 1 < w:
-                out[y, x + 1] += err * 8
-            if x + 2 < w:
-                out[y, x + 2] += err * 4
-            
-            if y + 1 < h:
-                if x - 2 >= 0:
-                    out[y + 1, x - 2] += err * 2
-                if x - 1 >= 0:
-                    out[y + 1, x - 1] += err * 4
-                
-                out[y + 1, x] += err * 8
-                
-                if x + 1 < w:
-                    out[y + 1, x + 1] += err * 4
-                if x + 2 < w:
-                    out[y + 1, x + 2] += err * 2
-                
-    # Clip final result to ensure valid image data
-    return np.clip(out, 0, 255).astype(np.uint8)
-
 def overlay_title(img, title):
     """Overlay title on the bottom of the image with outlined text for legibility."""
     # Use the globally loaded font
@@ -421,7 +385,7 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
 
 def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', 
                       stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1,
-                      clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='burkes',
+                      clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='fs',
                       dither_strength=1.0, sharpen_amount=0.0, auto_optimize=False):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)

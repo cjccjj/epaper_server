@@ -17,6 +17,8 @@ import re
 import asyncio
 import image_processor
 import random
+import io
+from PIL import Image
 from typing import Optional, List
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -239,7 +241,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         clip_pct = int(config.get("clip_pct", 22 if bit_depth == 1 else 20))
         cost_pct = int(config.get("cost_pct", 6))
         apply_gamma = config.get("apply_gamma", bit_depth == 2)
-        dither_mode = config.get("dither_mode", 'fs4g' if bit_depth == 2 else 'burkes')
+        dither_mode = config.get("dither_mode", 'fs4g' if bit_depth == 2 else 'fs')
         dither_strength = float(config.get("dither_strength", 1.0))
         sharpen_amount = float(config.get("sharpen_amount", 0.0))
         auto_optimize = config.get("auto_optimize", False)
@@ -653,6 +655,8 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
     
     return {
         "posts": cache["posts"],
+        "status": cache.get("status", "idle"),
+        "progress": cache.get("progress", ""),
         "last_update": cache["last_update"].isoformat() if cache["last_update"] else None,
         "last_update_formatted": cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if cache["last_update"] else "Never",
         "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
