@@ -55,18 +55,24 @@
         .dish-panel { background: var(--panel); padding: 10px; border-radius: 6px; border: 1px solid var(--border); }
         .dish-panel h3 { margin: 0 0 10px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
         
-        /* Reddit Panel Specific */
-        .reddit-config-container { background: var(--panel-light); padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-width: 500px; }
-        .reddit-config-container h3 { margin: 0 0 5px 0; font-size: 0.9rem; color: var(--primary); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+        /* Unified Config Panel Style */
+        .config-container { background: var(--panel-light); padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-width: 550px; }
+        .config-container h3 { margin: 0 0 5px 0; font-size: 0.9rem; color: var(--primary); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
         .config-row { display: flex; align-items: center; gap: 15px; }
         .config-group { display: flex; align-items: center; gap: 8px; flex: 1; }
         .config-group label { min-width: 65px; color: var(--text-dim); font-size: 11px; font-weight: 500; }
         .config-group select, .config-group input { flex: 1; height: 28px; font-size: 12px; }
-        .config-group input[type="range"] { flex: 2; height: 4px; }
+        .config-group input[type="range"] { flex: 2; height: 4px; margin: 0; padding: 0; width: 100%; }
         .config-group .val { min-width: 30px; text-align: right; color: var(--primary); font-weight: bold; font-size: 11px; }
         .config-group input[type="checkbox"] { flex: 0; width: 14px; height: 14px; cursor: pointer; }
         .compact-label { min-width: auto !important; margin-right: 2px; }
         
+        /* Segmented Control (for Bit Depth / Dither Mode) */
+        .segmented-control { display: flex; background: var(--input-bg); padding: 2px; border-radius: 4px; border: 1px solid var(--border); gap: 2px; flex: 1; height: 28px; box-sizing: border-box; }
+        .segment-btn { flex: 1; background: transparent; border: none; color: var(--text-dim); font-size: 10px; cursor: pointer; border-radius: 3px; transition: 0.2s; font-weight: 600; }
+        .segment-btn:hover { color: var(--text); }
+        .segment-btn.active { background: var(--primary); color: white; }
+
         .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
         .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; cursor: pointer; transition: transform 0.2s; }
         .reddit-post:hover { transform: translateY(-2px); border-color: var(--primary); }
@@ -193,55 +199,65 @@
             <div id="panel-gallery" class="tab-content hidden">
                 <h3>🖼️ Gallery Manager</h3>
                 <div class="gallery" id="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;"></div>
-                <div class="controls-top">
-                    <div class="size-row">
+                
+                <div class="config-container" style="max-width: 600px;">
+                    <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                         <input type="file" id="upload" accept="image/*" style="width: 180px;">
                         <button id="addBtn" class="btn-add">Add to Gallery</button>
-                        <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px;">✨ AI Optimize</button>
-                        <div class="stats" id="stats" style="margin-left: 8px;"></div>
+                        <div class="stats" id="stats" style="margin-left: 8px; flex: 1;"></div>
                     </div>
-                    
-                    <div class="control-row">
-                        <div class="control-group" style="display: none;">
-                            <label>AI Stylist</label>
-                            <input type="checkbox" id="autoOptimize">
+
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label>Bit Depth</label>
+                            <div class="segmented-control" id="galleryBitDepthControl">
+                                <button class="segment-btn active" data-val="fs" onclick="setGalleryBitDepth('fs')">1bit (BW)</button>
+                                <button class="segment-btn" data-val="fs4g" onclick="setGalleryBitDepth('fs4g')">2bit (4G)</button>
+                            </div>
                         </div>
-                        <div class="control-group">
+                        <div class="config-group" style="justify-content: flex-end; position: relative;">
+                            <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold;">✨ AI Optimize</button>
+                            <div id="aiInfo" style="position: absolute; top: 100%; right: 0; font-size: 10px; color: var(--text-dim); white-space: nowrap; margin-top: 2px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
                             <label>Gamma</label>
-                            <input type="range" id="gammaVal" min="1.0" max="2.6" step="0.2" value="2.2" oninput="dom.gammaValValue.textContent = this.value; process()">
-                            <span class="val"><span id="gammaValValue">2.2</span></span>
+                            <input type="range" id="gammaVal" min="0" max="4" step="1" value="0" oninput="updateGammaLabel(this.value, 'gammaValValue'); process()">
+                            <span class="val" id="gammaValValue">None</span>
                         </div>
-                        <div class="control-group">
+                        <div class="config-group">
                             <label>Sharpen</label>
                             <input type="range" id="sharpenAmount" min="0" max="2.0" step="0.1" value="0" oninput="dom.sharpenAmountValue.textContent = this.value; process()">
-                            <span class="val"><span id="sharpenAmountValue">0.0</span></span>
+                            <span class="val" id="sharpenAmountValue">0.0</span>
                         </div>
-                        <div class="control-group">
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
                             <label>Clip %</label>
                             <input type="range" id="clip" min="0" max="60" value="22">
-                            <span class="val"><span id="clipValue">22</span>%</span>
+                            <span class="val" id="clipValue">22</span>
                         </div>
-                        <div class="control-group">
+                        <div class="config-group">
                             <label>Cost %</label>
                             <input type="range" id="cost" min="0" max="60" value="6">
-                            <span class="val"><span id="costValue">6</span>%</span>
+                            <span class="val" id="costValue">6</span>
                         </div>
-                        <div class="control-group">
-                            <label>Dither</label>
-                            <select id="ditherMode" onchange="toggleStrengthSlider(); process()">
-                                <option value="fs">Floyd-Steinberg (BW)</option>
-                                <option value="fs4g">4G FS (Gray)</option>
-                            </select>
-                        </div>
-                        <div class="control-group" id="strengthGroup" style="display:none;">
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
                             <label>Dither %</label>
                             <input type="range" id="ditherStrength" min="0" max="100" value="100" oninput="dom.ditherStrengthValue.textContent = this.value; process()">
-                            <span class="val"><span id="ditherStrengthValue">100</span>%</span>
+                            <span class="val" id="ditherStrengthValue">100</span>
                         </div>
+                        <div class="config-group"></div>
                     </div>
                 </div>
 
-                <div class="previews-container">
+                <div class="previews-container" style="margin-top: 15px;">
                     <div class="preview-box">
                         <h4>Original</h4>
                         <canvas id="cOriginal"></canvas>
@@ -254,7 +270,7 @@
             </div>
 
             <div id="panel-reddit" class="tab-content hidden">
-                <div class="reddit-config-container" style="max-width: 600px;">
+                <div class="config-container" style="max-width: 600px;">
                     <h3>Reddit Configuration</h3>
                     
                     <div class="reddit-status-row">
@@ -266,7 +282,7 @@
                     <div class="config-row">
                         <div class="config-group">
                             <label>Subreddit</label>
-                            <select id="redditSub">
+                            <select id="redditSub" style="max-width: 140px;">
                                 <option value="">-- Choose --</option>
                                 <optgroup label="Memes">
                                     <option value="memes">r/memes</option>
@@ -294,7 +310,7 @@
                                 </optgroup>
                             </select>
                         </div>
-                        <div class="config-group" style="flex: 0; min-width: 80px;">
+                        <div class="config-group" style="flex: 0; min-width: 100px;">
                             <label class="compact-label">Show Title</label>
                             <input type="checkbox" id="redditShowTitle">
                         </div>
@@ -302,13 +318,27 @@
 
                     <div class="config-row">
                         <div class="config-group">
+                            <label>Bit Depth</label>
+                            <div class="segmented-control" id="redditBitDepthControl">
+                                <button class="segment-btn active" data-val="1" onclick="setRedditBitDepth('1')">1bit (BW)</button>
+                                <button class="segment-btn" data-val="2" onclick="setRedditBitDepth('2')">2bit (4G)</button>
+                            </div>
+                        </div>
+                        <div class="config-group">
+                            <label class="compact-label">AI Auto</label>
+                            <input type="checkbox" id="redditAutoOptimize" style="width: auto;">
+                        </div>
+                    </div>
+
+                    <div class="config-row">
+                        <div class="config-group">
                             <label>Gamma</label>
-                            <input type="checkbox" id="redditGamma">
-                            <span style="font-size: 10px; color: var(--text-dim);">[1, 2.2]</span>
+                            <input type="range" id="redditGammaSlider" min="0" max="4" step="1" value="0" oninput="updateGammaLabel(this.value, 'redditGammaValue')">
+                            <span class="val" id="redditGammaValue">None</span>
                         </div>
                         <div class="config-group">
                             <label>Sharpen</label>
-                            <input type="range" id="redditSharpen" min="0" max="2.0" step="0.1" value="0" oninput="document.getElementById('redditSharpenValue').textContent = this.value">
+                            <input type="range" id="redditSharpen" min="0" max="2.0" step="0.1" value="0" oninput="dom.redditSharpenValue.textContent = this.value">
                             <span class="val" id="redditSharpenValue">0.0</span>
                         </div>
                     </div>
@@ -328,27 +358,13 @@
 
                     <div class="config-row">
                         <div class="config-group">
-                            <label>Bit Depth</label>
-                            <select id="redditBitDepth" onchange="syncRedditBitDepth()">
-                                <option value="1">1-bit (BW)</option>
-                                <option value="2">2-bit (4G)</option>
-                            </select>
-                        </div>
-                        <div class="config-group">
                             <label>Dither %</label>
-                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="document.getElementById('redditDitherStrengthValue').textContent = this.value">
+                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="dom.redditDitherStrengthValue.textContent = this.value">
                             <span class="val" id="redditDitherStrengthValue">100</span>
                         </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label class="compact-label">AI Auto-Optimize</label>
-                            <input type="checkbox" id="redditAutoOptimize" style="width: auto;">
-                        </div>
-                        <div class="config-actions" style="flex: 2; justify-content: flex-end;">
-                            <button class="btn-save" onclick="saveRedditConfig()" style="height: 32px; font-size: 12px; margin: 0;">Save Config</button>
-                            <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()" style="height: 32px; font-size: 12px; margin: 0; margin-left: 8px;">Save and Fetch Now</button>
+                        <div class="config-actions" style="flex: 1; justify-content: flex-end; display: flex; gap: 8px;">
+                            <button class="btn-save" onclick="saveRedditConfig()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Save Config</button>
+                            <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Fetch Now</button>
                         </div>
                     </div>
                 </div>
@@ -426,15 +442,16 @@
         async function toggleAIAuto() {
             // For Gallery, this is a "one-shot" optimization button.
             if (!img.src) {
-                dom.stats.textContent = "Please select an image first.";
+                alert("Please select an image first.");
                 return;
             }
 
+            const aiInfo = document.getElementById('aiInfo');
             const originalBtnText = dom.aiOptimizeBtn.textContent;
             try {
                 dom.aiOptimizeBtn.disabled = true;
                 dom.aiOptimizeBtn.textContent = "⌛ Analyzing...";
-                dom.stats.textContent = "AI is analyzing image...";
+                aiInfo.textContent = "AI is analyzing image...";
                 
                 // Create a small version of the image for AI analysis
                 const tempCanvas = document.createElement('canvas');
@@ -468,26 +485,25 @@
                     // Update UI sliders to match AI choice
                     dom.sharpen.value = sh;
                     dom.ditherStrength.value = dt * 100;
-                    dom.gamma.value = gm ? 2.2 : 1.0; 
+                    dom.gamma.value = gm ? 2 : 0; // 2=2.2, 0=None
                     
                     // Set dither mode to FS for BW if needed.
-                    if (dom.ditherMode.value !== 'fs4g') dom.ditherMode.value = 'fs';
-                    toggleStrengthSlider();
-
+                    setGalleryBitDepth('fs');
+                    
                     // Update labels
                     dom.sharpenAmountValue.textContent = dom.sharpen.value;
                     dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
-                    dom.gammaValValue.textContent = dom.gamma.value;
+                    updateGammaLabel(dom.gamma.value, 'gammaValValue');
                     
                     const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gm?'2.2':'None'}`;
-                    dom.stats.textContent = `AI: ${style.content_type}, text:${style.has_text_overlay}, grad:${style.gradient_complexity} | ${applied}`;
+                    aiInfo.textContent = `${style.content_type} | ${applied}`;
                     process();
                 } else {
-                    dom.stats.textContent = "AI Analysis failed: " + (style.error || "Unknown error");
+                    aiInfo.textContent = "AI Analysis failed: " + (style.error || "Unknown error");
                 }
             } catch (e) {
                 console.error("AI Analysis failed:", e);
-                dom.stats.textContent = "AI Analysis failed.";
+                aiInfo.textContent = "AI Analysis failed.";
             } finally {
                 dom.aiOptimizeBtn.disabled = false;
                 dom.aiOptimizeBtn.textContent = originalBtnText;
@@ -501,6 +517,44 @@
                 el.disabled = isAuto;
                 if (el.parentElement) el.parentElement.style.opacity = isAuto ? '0.5' : '1';
             });
+        }
+
+        function updateGammaLabel(value, labelId) {
+            const labels = ['None', '1.0', '2.2', '2.6', '3.0'];
+            const label = labels[parseInt(value)] || 'None';
+            document.getElementById(labelId).textContent = label;
+        }
+
+        function setGalleryBitDepth(val) {
+            document.querySelectorAll('#galleryBitDepthControl .segment-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.val === val);
+            });
+            // No hidden input needed if we just read the active button
+            process();
+        }
+
+        function setRedditBitDepth(val) {
+            document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.val === val);
+            });
+            
+            // Apply defaults based on selection
+            if (val === "2") {
+                dom.redditGamma.checked = true;
+                dom.redditClip.value = 20;
+                dom.redditCost.value = 6;
+                dom.redditSharpen.value = 0.2;
+            } else {
+                dom.redditGamma.checked = false;
+                dom.redditClip.value = 22;
+                dom.redditCost.value = 6;
+                dom.redditSharpen.value = 0;
+            }
+            
+            // Update labels
+            if (dom.redditClipValue) dom.redditClipValue.textContent = dom.redditClip.value;
+            if (dom.redditCostValue) dom.redditCostValue.textContent = dom.redditCost.value;
+            if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = dom.redditSharpen.value;
         }
 
         async function init() {
@@ -644,8 +698,7 @@
                     
                     // Poll for progress
                     const pollInterval = setInterval(async () => {
-                        await loadRedditPreview();
-                        // Check if finished
+                        // Check status without refreshing images
                         const res2 = await fetch(`/admin/reddit/preview/${currentMac}`);
                         const data = await res2.json();
                         
@@ -656,6 +709,10 @@
                             dom.fetchNowBtn.disabled = false;
                             dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
                             statusBox.innerHTML = '<span style="color: #10b981;">✅ Fetch Complete!</span>';
+                            
+                            // ONLY NOW refresh the preview images
+                            await loadRedditPreview();
+                            
                             setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
                         }
                     }, 2000);
@@ -674,10 +731,11 @@
         }
 
         async function saveRedditConfig(showAlert = true) {
+            const bitDepthBtn = document.querySelector('#redditBitDepthControl .segment-btn.active');
             const config = {
                 subreddit: dom.redditSub.value || 'memes',
                 show_titles: dom.redditShowTitle.checked,
-                bit_depth: parseInt(dom.redditBitDepth.value) || 1,
+                bit_depth: bitDepthBtn ? parseInt(bitDepthBtn.dataset.val) : 1,
                 dither_strength: parseInt(dom.redditDitherStrength.value) / 100,
                 apply_gamma: dom.redditGamma.checked,
                 sharpen_amount: parseFloat(dom.redditSharpen.value) || 0,
@@ -858,7 +916,13 @@
                 console.log("Updating Reddit Config UI for", currentMac, d.reddit_config);
                 dom.redditSub.value = d.reddit_config.subreddit || '';
                 dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
-                dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
+                
+                // Bit Depth Segmented Control
+                const rbd = d.reddit_config.bit_depth || 1;
+                document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.val == rbd);
+                });
+
                 dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
                 dom.redditSharpen.value = d.reddit_config.sharpen_amount || 0;
                 dom.redditClip.value = d.reddit_config.clip_pct || 22;
@@ -875,7 +939,11 @@
                 // Default values if no config
                 dom.redditSub.value = '';
                 dom.redditShowTitle.checked = true;
-                dom.redditBitDepth.value = "1";
+                
+                document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.val == "1");
+                });
+
                 dom.redditGamma.checked = false;
                 dom.redditSharpen.value = 0;
                 dom.redditClip.value = 22;
@@ -951,8 +1019,11 @@
             }
 
             // Gamma Correction
-            const gammaVal = parseFloat(dom.gamma.value) || 1.0;
-            if (gammaVal !== 1.0) {
+            const gammaSliderVal = parseInt(dom.gamma.value) || 0;
+            const gammaLabels = [1.0, 1.0, 2.2, 2.6, 3.0]; // 0=None (1.0), 1=1.0, 2=2.2, 3=2.6, 4=3.0
+            const gammaVal = gammaLabels[gammaSliderVal];
+            
+            if (gammaSliderVal > 0) {
                 for (let i = 0; i < data.length; i += 4) {
                     const g = 255 * Math.pow(data[i] / 255, 1 / gammaVal);
                     data[i] = data[i+1] = data[i+2] = g;
@@ -1021,7 +1092,8 @@
 
             // 4. Dithering (on a copy so we don't mess up the auto-contrast display)
             const ditherData = new Uint8ClampedArray(data);
-            const dMode = dom.ditherMode.value;
+            const bitDepthBtn = document.querySelector('#galleryBitDepthControl .segment-btn.active');
+            const dMode = bitDepthBtn ? bitDepthBtn.dataset.val : 'fs';
             const strength = parseInt(dom.ditherStrength.value) / 100;
 
             if (dMode === 'fs4g') {
