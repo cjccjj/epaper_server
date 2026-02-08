@@ -337,16 +337,16 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
         # For comics/illustrations, we often want more punchy contrast (higher gamma to darken mids or keep them clean)
         # For photos, 2.2 is standard.
         if style.content_type == "comic_illustration":
-            apply_gamma = True # Use 2.2 gamma
+            apply_gamma = 2.2 # Use 2.2 gamma
         else:
-            apply_gamma = False # Use linear/no-gamma (default)
+            apply_gamma = 1.0 # Use linear/no-gamma (default)
 
         # Record applied settings in labels for UI transparency
         if ai_labels:
             ai_labels["applied"] = {
                 "sharpen": f"{int(sharpen_amount*100)}%",
                 "dither": f"{int(dither_strength*100)}%",
-                "gamma": "2.2" if apply_gamma else "None"
+                "gamma": f"{apply_gamma}" if apply_gamma > 1.0 else "1.0"
             }
             
     # 3. Sharpening
@@ -357,9 +357,19 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     img = img.convert("L")
     data = np.array(img).astype(np.float32)
     
-    # Apply Gamma 2.2 Correction if requested
-    if apply_gamma:
-        data = 255.0 * np.power(data / 255.0, 1.0 / 2.2)
+    # Apply Gamma Correction if requested
+    # apply_gamma can be a boolean (True=2.2, False=1.0) or a float
+    gamma_val = 1.0
+    if isinstance(apply_gamma, bool):
+        gamma_val = 2.2 if apply_gamma else 1.0
+    else:
+        try:
+            gamma_val = float(apply_gamma)
+        except:
+            gamma_val = 1.0
+            
+    if gamma_val > 1.0:
+        data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
     
     data = data.astype(np.uint8)
     
