@@ -320,6 +320,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             
                             try:
                                 title_to_overlay = entry.title if show_titles else None
+                                print(f"  DEBUG: Processing {img_url} -> {filename} ({bit_depth}-bit)")
                                 await asyncio.to_thread(
                                     image_processor.process_image_url, 
                                     img_url, filepath,
@@ -607,12 +608,17 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
     except:
         server_tz = "Local"
 
+    # Get device rate from database if available, or default to 3
+    rate_hours = 3
+    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+    
     return {
         "posts": cache["posts"],
         "last_update": cache["last_update"].isoformat() if cache["last_update"] else None,
         "last_update_formatted": cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if cache["last_update"] else "Never",
         "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "server_tz": server_tz,
+        "rate_hours": rate_hours,
         "config": cache.get("config", {})
     }
 

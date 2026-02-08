@@ -56,10 +56,14 @@
         .dish-panel h3 { margin: 0 0 10px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
         
         /* Reddit Panel Specific */
+        .reddit-config-container { display: flex; flex-direction: column; gap: 15px; }
+        .reddit-main-config, .reddit-image-config { background: var(--panel-light); padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: block !important; visibility: visible !important; }
         .reddit-config { display: flex; flex-direction: column; gap: 10px; max-width: 400px; }
-        .config-group { display: flex; align-items: center; gap: 10px; }
-        .config-group label { width: 80px; color: var(--text-dim); }
+        .config-group { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .config-group label { width: 90px; color: var(--text-dim); font-size: 12px; }
         .config-group select, .config-group input { flex: 1; }
+        .config-group input[type="range"] { flex: 2; }
+        .config-group .val { min-width: 35px; text-align: right; color: var(--primary); font-weight: bold; }
         
         .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, 200px); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; justify-content: flex-start; }
         .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; cursor: pointer; transition: transform 0.2s; }
@@ -657,16 +661,20 @@
 
             // Update Reddit Config inputs
             if (d.reddit_config) {
-                dom.redditSub.value = d.reddit_config.subreddit || 'memes';
-                dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
-                dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
-                dom.redditW.value = d.reddit_config.width || 400;
-                dom.redditH.value = d.reddit_config.height || 300;
-                dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
-                dom.redditClip.value = d.reddit_config.clip_pct || 22;
-                dom.redditCost.value = d.reddit_config.cost_pct || 6;
-                document.getElementById('redditClipValue').textContent = dom.redditClip.value;
-                document.getElementById('redditCostValue').textContent = dom.redditCost.value;
+                console.log("Updating Reddit Config UI for", currentMac, d.reddit_config);
+                if (dom.redditSub) dom.redditSub.value = d.reddit_config.subreddit || 'memes';
+                if (dom.redditShowTitle) dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
+                if (dom.redditBitDepth) dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
+                if (dom.redditW) dom.redditW.value = d.reddit_config.width || 400;
+                if (dom.redditH) dom.redditH.value = d.reddit_config.height || 300;
+                if (dom.redditGamma) dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
+                if (dom.redditClip) dom.redditClip.value = d.reddit_config.clip_pct || 22;
+                if (dom.redditCost) dom.redditCost.value = d.reddit_config.cost_pct || 6;
+                
+                const clipValEl = document.getElementById('redditClipValue');
+                const costValEl = document.getElementById('redditCostValue');
+                if (clipValEl) clipValEl.textContent = dom.redditClip.value;
+                if (costValEl) costValEl.textContent = dom.redditCost.value;
             }
         }
 
