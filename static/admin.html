@@ -267,6 +267,18 @@
                         <label style="width: 120px;">Show Title</label>
                         <input type="checkbox" id="redditShowTitle" style="width: auto;">
                     </div>
+                    <div class="config-group">
+                        <label style="width: 120px;">Bit Depth</label>
+                        <select id="redditBitDepth" style="width: 120px;">
+                            <option value="1">1-bit (BW)</option>
+                            <option value="2">2-bit (4G Gray)</option>
+                        </select>
+                    </div>
+                    <div class="config-group">
+                        <label style="width: 120px;">Target Size</label>
+                        <input type="number" id="redditW" value="400" style="width: 60px;"> x 
+                        <input type="number" id="redditH" value="300" style="width: 60px;">
+                    </div>
                     <div id="redditStatus" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
                         Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">3</span> hours
                     </div>
@@ -314,6 +326,9 @@
             overlayImg: document.getElementById('overlayImg'),
             redditSub: document.getElementById('redditSub'),
             redditShowTitle: document.getElementById('redditShowTitle'),
+            redditBitDepth: document.getElementById('redditBitDepth'),
+            redditW: document.getElementById('redditW'),
+            redditH: document.getElementById('redditH'),
             redditPreview: document.getElementById('redditPreview'),
             fetchNowBtn: document.getElementById('fetchNowBtn')
         };
@@ -438,16 +453,9 @@
                 // 1. Save Config first
                 await saveRedditConfig(false);
                 
-                // 2. Trigger fetch with current config
-                const config = {
-                    subreddit: dom.redditSub.value || 'memes',
-                    show_titles: dom.redditShowTitle.checked
-                };
-
-                const res = await fetch('/admin/reddit/fetch_now', { 
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
+                // 2. Trigger fetch
+                const res = await fetch(`/admin/reddit/fetch_now/${currentMac}`, { 
+                    method: 'POST'
                 });
                 
                 if (res.ok) {
@@ -475,7 +483,10 @@
         async function saveRedditConfig(showAlert = true) {
             const config = {
                 subreddit: dom.redditSub.value || 'memes',
-                show_titles: dom.redditShowTitle.checked
+                show_titles: dom.redditShowTitle.checked,
+                bit_depth: parseInt(dom.redditBitDepth.value) || 1,
+                width: parseInt(dom.redditW.value) || 400,
+                height: parseInt(dom.redditH.value) || 300
             };
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.reddit_config = config;
@@ -499,14 +510,17 @@
                 }
 
                 if (data.posts && data.posts.length > 0) {
-                    dom.redditPreview.innerHTML = data.posts.map(post => `
-                        <div class="reddit-post">
-                            <img src="/api/bitmap/${Date.now()}/${post.bmp_filename}" 
-                                 alt="${post.title || ''}" 
-                                 onclick="showFull('/api/bitmap/${Date.now()}/${post.bmp_filename}')">
-                            <div class="post-title">${post.title || 'Reddit Post'}</div>
-                        </div>
-                    `).join('');
+                    dom.redditPreview.innerHTML = data.posts.map(post => {
+                        const filename = post.filename || post.bmp_filename;
+                        return `
+                            <div class="reddit-post">
+                                <img src="/api/bitmap/${Date.now()}/${filename}" 
+                                     alt="${post.title || ''}" 
+                                     onclick="showFull('/api/bitmap/${Date.now()}/${filename}')">
+                                <div class="post-title">${post.title || 'Reddit Post'}</div>
+                            </div>
+                        `;
+                    }).join('');
                 } else {
                     dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
                 }
@@ -594,7 +608,10 @@
             // Update Reddit Config inputs
             if (d.reddit_config) {
                 dom.redditSub.value = d.reddit_config.subreddit || 'memes';
-                dom.redditShowTitle.checked = d.reddit_config.show_titles || false;
+                dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
+                dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
+                dom.redditW.value = d.reddit_config.width || 400;
+                dom.redditH.value = d.reddit_config.height || 300;
             }
         }
 

@@ -233,7 +233,80 @@ def overlay_title(img, title):
     
     return img
 
-def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD, title=None):
+def apply_4g_fs(data):
+    """4-level Floyd-Steinberg Dithering (0, 85, 170, 255)."""
+    h, w = data.shape
+    out = data.astype(np.float32)
+    
+    for y in range(h):
+        # Serpentine scan for better quality
+        ltr = (y % 2 == 0)
+        rng = range(w) if ltr else range(w - 1, -1, -1)
+        
+        for x in rng:
+            old_val = out[y, x]
+            # Quantize to 0, 85, 170, 255
+            new_val = np.round(old_val / 85.0) * 85.0
+            err = old_val - new_val
+            out[y, x] = new_val
+            
+            # Error distribution
+            if ltr:
+                if x + 1 < w: out[y, x + 1] += err * 7 / 16
+                if y + 1 < h:
+                    if x - 1 >= 0: out[y + 1, x - 1] += err * 3 / 16
+                    out[y + 1, x] += err * 5 / 16
+                    if x + 1 < w: out[y + 1, x + 1] += err * 1 / 16
+            else:
+                if x - 1 >= 0: out[y, x - 1] += err * 7 / 16
+                if y + 1 < h:
+                    if x + 1 < w: out[y + 1, x + 1] += err * 3 / 16
+                    out[y + 1, x] += err * 5 / 16
+                    if x - 1 >= 0: out[y + 1, x - 1] += err * 1 / 16
+                    
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+def apply_4g_nd(data):
+    """4-level No Dither (Direct Quantization)."""
+    return (np.round(data / 85.0) * 85.0).astype(np.uint8)
+
+def save_as_png(img, path, bit_depth=1):
+    """Save image as indexed PNG with specific bit depth (1 or 2)."""
+    dir_name = os.path.dirname(path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
+        
+    if bit_depth == 1:
+        # Pillow's '1' mode is already 1-bit indexed
+        img = img.convert("1")
+        img.save(path, format="PNG", optimize=True)
+    elif bit_depth == 2:
+        # Pillow doesn't easily save 2-bit indexed PNGs directly through .save()
+        # It usually saves 8-bit indexed. To get true 2-bit, we need more control.
+        # However, for most epaper clients, an 8-bit indexed PNG with 4 colors
+        # is also very small and often easier to decode.
+        # But the user specifically asked for "correctly handle our 1 and 2 bit raw png".
+        
+        # Let's use 'P' mode with a 4-color palette
+        img = img.convert("L")
+        data = np.array(img)
+        # Map 0, 85, 170, 255 to indices 0, 1, 2, 3
+        indices = (np.round(data / 85.0)).astype(np.uint8)
+        
+        palette_img = Image.fromarray(indices, mode='P')
+        # Set palette: [0,0,0, 85,85,85, 170,170,170, 255,255,255]
+        palette = [0,0,0, 85,85,85, 170,170,170, 255,255,255] + [0]*(256*3 - 12)
+        palette_img.putpalette(palette)
+        
+        # PNG 2-bit (bit_depth=2) is a valid IHDR parameter.
+        # Pillow's PNG encoder supports bits=2 for 'P' mode if we provide it.
+        palette_img.save(path, format="PNG", bits=2, optimize=True)
+    else:
+        img.save(path, format="PNG", optimize=True)
+
+def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', 
+                       stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1, 
+                       apply_gamma=False, dither_mode='burkes'):
     # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
@@ -241,37 +314,48 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     img = img.convert("L")
     data = np.array(img).astype(np.float32)
     
-    # Apply Gamma 2.2 Correction
-    # Note: Applying before AC keeps linear consistency
-    data = 255.0 * np.power(data / 255.0, 1.0 / 2.2)
+    # Apply Gamma 2.2 Correction if requested
+    if apply_gamma:
+        data = 255.0 * np.power(data / 255.0, 1.0 / 2.2)
+    
     data = data.astype(np.uint8)
     
     # 3. Apply Weighted Approaching Auto-Contrast
     data = apply_ac(data, clip_pct, cost_pct)
     
-    # 4. Apply Burkes Dithering
-    data = apply_burkes(data)
+    # 4. Apply Dithering
+    if bit_depth == 1:
+        if dither_mode == 'fs':
+            # Need to implement 1-bit FS with serpentine if we want to match 4G FS
+            # For now, let's just use Burkes as requested for default
+            data = apply_burkes(data)
+        else:
+            data = apply_burkes(data)
+        out_img = Image.fromarray(data).convert("1")
+    else:
+        # 2-bit (4G)
+        if dither_mode == 'fs4g':
+            data = apply_4g_fs(data)
+        elif dither_mode == 'nd4g':
+            data = apply_4g_nd(data)
+        else:
+            data = apply_4g_fs(data)
+        out_img = Image.fromarray(data).convert("L")
     
-    # 5. Convert back to Pillow image (1-bit mode)
-    dithered_img = Image.fromarray(data).convert("1")
-    
-    # 6. Overlay title if provided
+    # 5. Overlay title if provided
     if title:
-        dithered_img = overlay_title(dithered_img, title)
+        out_img = overlay_title(out_img, title)
         
-    return dithered_img
+    return out_img
 
-def save_as_bmp(img, path):
-    # Ensure directory exists if path contains one
-    dir_name = os.path.dirname(path)
-    if dir_name:
-        os.makedirs(dir_name, exist_ok=True)
-    # BMP format for epaper usually needs to be 1-bit
-    img.save(path, format="BMP")
-
-def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', stretch_threshold=STRETCH_THRESHOLD, title=None):
+def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', 
+                      stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1,
+                      clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='burkes'):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)
-    dithered = process_and_dither(img, target_size, resize_mode=resize_mode, stretch_threshold=stretch_threshold, title=title)
-    save_as_bmp(dithered, output_path)
+    processed = process_and_dither(img, target_size, clip_pct=clip_pct, cost_pct=cost_pct, 
+                                   resize_mode=resize_mode, stretch_threshold=stretch_threshold, 
+                                   title=title, bit_depth=bit_depth, apply_gamma=apply_gamma, 
+                                   dither_mode=dither_mode)
+    save_as_png(processed, output_path, bit_depth=bit_depth)
     return output_path

@@ -34,77 +34,70 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Reddit User Agent
 REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
 
-# Cache for Reddit top images to avoid frequent fetching
-# Format: { "posts": [], "last_update": datetime, "config": {}, "rate_hours": 8 }
-reddit_global_cache = {
-    "posts": [], 
-    "last_update": None, 
-    "config": {
-        "subreddit": "memes",
-        "show_titles": False
-    },
-    "rate_hours": 3
-}
+# --- Reddit Cache Management ---
+# Global dictionary to store per-device caches: {mac: cache_dict}
+reddit_device_caches = {}
+
+def get_device_cache_path(mac):
+    clean_mac = mac.replace(":", "").lower()
+    return os.path.join(DATA_DIR, f"reddit_cache_{clean_mac}.json")
+
+def load_device_reddit_cache(mac):
+    path = get_device_cache_path(mac)
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                cache = json.load(f)
+                if cache.get("last_update"):
+                    cache["last_update"] = datetime.datetime.fromisoformat(cache["last_update"])
+                return cache
+        except Exception as e:
+            print(f"Error loading reddit cache for {mac}: {e}")
+    
+    return {
+        "posts": [],
+        "last_update": None,
+        "config": {"subreddit": "aww", "show_titles": True}
+    }
+
+def save_device_reddit_cache(mac, cache):
+    path = get_device_cache_path(mac)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+    # Create a copy for JSON serialization
+    serializable = cache.copy()
+    if serializable.get("last_update"):
+        serializable["last_update"] = serializable["last_update"].isoformat()
+    
+    try:
+        with open(path, "w") as f:
+            json.dump(serializable, f)
+    except Exception as e:
+        print(f"Error saving reddit cache for {mac}: {e}")
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
 
-def save_reddit_cache():
-    """Save the global reddit cache to a persistent JSON file."""
-    try:
-        cache_data = reddit_global_cache.copy()
-        if cache_data["last_update"]:
-            cache_data["last_update"] = cache_data["last_update"].isoformat()
-        
-        with open(REDDIT_CACHE_FILE, "w") as f:
-            json.dump(cache_data, f)
-        print(f"DEBUG: Reddit cache saved to {REDDIT_CACHE_FILE}")
-    except Exception as e:
-        print(f"ERROR: Failed to save reddit cache: {e}")
-
-def load_reddit_cache():
-    """Load the global reddit cache from the persistent JSON file."""
-    global reddit_global_cache
-    if os.path.exists(REDDIT_CACHE_FILE):
-        try:
-            with open(REDDIT_CACHE_FILE, "r") as f:
-                data = json.load(f)
-                if data.get("last_update"):
-                    data["last_update"] = datetime.datetime.fromisoformat(data["last_update"])
-                
-                # Merge loaded data into global cache
-                reddit_global_cache.update(data)
-                
-                # Force rate_hours to 3 if we are changing the policy
-                if reddit_global_cache.get("rate_hours") != 3:
-                    reddit_global_cache["rate_hours"] = 3
-                    save_reddit_cache() # Persist the new rate
-                    
-                print(f"DEBUG: Reddit cache loaded from {REDDIT_CACHE_FILE} (Last update: {reddit_global_cache['last_update']})")
-        except Exception as e:
-            print(f"ERROR: Failed to load reddit cache: {e}")
-
-# Load cache on module import
-load_reddit_cache()
-
+# --- App Lifecycle ---
 # Initialize database
 database.init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
     
-    # Add Reddit update job
-    scheduler.add_job(
-        scheduled_reddit_update,
-        IntervalTrigger(hours=reddit_global_cache["rate_hours"]),
-        id="reddit_update",
-        replace_existing=True
-    )
-    
-    # Initial check/fetch
-    asyncio.create_task(initial_fetch_check())
+    # Check for devices that need Reddit updates
+    db = database.SessionLocal()
+    try:
+        devices = db.query(database.Device).all()
+        for device in devices:
+            if device.active_dish == "reddit":
+                # Trigger initial refresh in background
+                asyncio.create_task(refresh_device_reddit_cache(device.mac_address))
+    finally:
+        db.close()
     
     yield
     
@@ -196,73 +189,90 @@ async def login(response: Response, password: str = Body(None), request: Request
     else:
         return RedirectResponse(url="/login?error=1", status_code=303)
 
-async def initial_fetch_check():
-    """Check if we need to fetch on startup."""
-    needs_fetch = False
-    if not reddit_global_cache["posts"]:
-        print("DEBUG: No posts in cache, triggering initial fetch")
-        needs_fetch = True
-    elif reddit_global_cache["last_update"]:
-        elapsed = datetime.datetime.now() - reddit_global_cache["last_update"]
-        if elapsed.total_seconds() > reddit_global_cache["rate_hours"] * 3600:
-            print(f"DEBUG: Cache expired ({elapsed.total_seconds()/3600:.1f}h old), triggering fetch")
-            needs_fetch = True
-    
-    if needs_fetch:
-        await scheduled_reddit_update()
-
 async def scheduled_reddit_update():
-    """Job wrapper with retry logic."""
-    config = reddit_global_cache["config"]
-    retries = 2
-    for attempt in range(retries + 1):
-        try:
-            print(f"DEBUG: Scheduled Reddit fetch attempt {attempt + 1}")
-            await refresh_global_reddit_cache(
-                subreddit=config.get("subreddit", "memes")
-            )
-            print("DEBUG: Scheduled Reddit fetch successful")
-            return
-        except Exception as e:
-            print(f"ERROR: Reddit fetch attempt {attempt + 1} failed: {e}")
-            if attempt < retries:
-                wait_time = 30 * (attempt + 1)
-                print(f"DEBUG: Retrying in {wait_time}s...")
-                await asyncio.sleep(wait_time)
-    print("ERROR: All Reddit fetch attempts failed. Waiting for next scheduled run.")
-
-async def refresh_global_reddit_cache(subreddit="memes"):
-    """Fetches images from Reddit using a revised strategy (Recent & Old Good)."""
-    print(f"DEBUG: refresh_global_reddit_cache called with subreddit={subreddit}")
-    
-    # Strategy Definition
-    # 1. Recent: top_day (8) and rising (8). Reuse if in cache.
-    # 2. Old Good: top_week (4), top_month (3), top_year (2). Skip if in cache to rotate.
-    strategies = [
-        {"sort": "top", "time": "day", "limit": 8, "label": "top_day", "type": "recent"},
-        {"sort": "rising", "time": "all", "limit": 8, "label": "uprising", "type": "recent"},
-        {"sort": "top", "time": "week", "limit": 4, "label": "top_week", "type": "old_good"},
-        {"sort": "top", "time": "month", "limit": 3, "label": "top_month", "type": "old_good"},
-        {"sort": "top", "time": "year", "limit": 2, "label": "top_year", "type": "old_good"}
-    ]
-    
-    all_posts = []
-    seen_ids = set()
-    
-    # Map of existing posts for reuse: {id: post_dict}
-    existing_posts = {p["id"]: p for p in reddit_global_cache.get("posts", []) if isinstance(p, dict) and "id" in p}
-    
-    # We'll use a local counter for filenames to avoid collisions
-    reddit_files = [f for f in os.listdir(BITMAP_DIR) if f.startswith("reddit_") and f.endswith(".bmp")]
-    if reddit_files:
-        try:
-            filename_counter = max([int(f.split("_")[1].split(".")[0]) for f in reddit_files]) + 1
-        except:
-            filename_counter = len(reddit_files)
-    else:
-        filename_counter = 0
-
+    """Periodic job to update Reddit content for all active devices."""
+    db = database.SessionLocal()
     try:
+        devices = db.query(database.Device).all()
+        for device in devices:
+            if device.active_dish == "reddit":
+                # Only refresh if cache is older than 3 hours
+                cache = load_device_reddit_cache(device.mac_address)
+                if cache["last_update"]:
+                    elapsed = (datetime.datetime.now() - cache["last_update"]).total_seconds()
+                    if elapsed < 3 * 3600:
+                        continue
+                
+                print(f"DEBUG: Scheduled Reddit update for {device.mac_address}")
+                asyncio.create_task(refresh_device_reddit_cache(device.mac_address))
+    finally:
+        db.close()
+
+async def initial_fetch_check():
+    """Check if any device needs an initial Reddit fetch."""
+    await scheduled_reddit_update()
+
+async def refresh_device_reddit_cache(mac, db_session=None):
+    """Fetch and dither images for a specific device."""
+    # 1. Get device and its config
+    if db_session is None:
+        db = database.SessionLocal()
+    else:
+        db = db_session
+        
+    try:
+        device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+        if not device:
+            print(f"ERROR: Device {mac} not found for Reddit refresh")
+            return
+            
+        config = device.reddit_config or {}
+        subreddit = config.get("subreddit", "aww")
+        show_titles = config.get("show_titles", True)
+        bit_depth = int(config.get("bit_depth", 1))
+        width = int(config.get("width", 400))
+        height = int(config.get("height", 300))
+        
+        # Determine processing parameters based on bit_depth
+        if bit_depth == 2:
+            # 2-bit: 4G dithering, gamma 2.2, 20% clip, 6% cost
+            clip_pct = 20
+            cost_pct = 6
+            apply_gamma = True
+            dither_mode = 'fs4g'
+        else:
+            # 1-bit: Default settings (Burkes, no gamma, 22% clip, 6% cost)
+            clip_pct = 22
+            cost_pct = 6
+            apply_gamma = False
+            dither_mode = 'burkes'
+            
+        print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit)")
+
+        # Mixed strategy: get Top/Day and Hot
+        strategies = [
+            {"sort": "top", "time": "day", "limit": 15, "label": "Top Day", "type": "recent"},
+            {"sort": "hot", "time": "", "limit": 10, "label": "Hot", "type": "old_good"}
+        ]
+        
+        all_posts = []
+        seen_ids = set()
+        
+        # Load current cache for reuse
+        cache = load_device_reddit_cache(mac)
+        existing_posts = {p["id"]: p for p in cache.get("posts", []) if isinstance(p, dict) and "id" in p}
+        
+        # Filename counter per device
+        clean_mac = mac.replace(":", "").lower()
+        reddit_files = [f for f in os.listdir(BITMAP_DIR) if f.startswith(f"reddit_{clean_mac}_") and f.endswith(".png")]
+        if reddit_files:
+            try:
+                filename_counter = max([int(f.split("_")[-1].split(".")[0]) for f in reddit_files]) + 1
+            except:
+                filename_counter = len(reddit_files)
+        else:
+            filename_counter = 0
+
         async with httpx.AsyncClient() as client:
             for strategy in strategies:
                 sort = strategy["sort"]
@@ -272,105 +282,111 @@ async def refresh_global_reddit_cache(subreddit="memes"):
                 s_type = strategy["type"]
                 
                 url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
-                print(f"DEBUG: Fetching strategy {label} from: {url}")
                 
-                response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
-                if response.status_code != 200:
-                    print(f"ERROR: Failed to fetch strategy {label}: {response.status_code}")
-                    continue
-                
-                feed = feedparser.parse(response.content)
-                print(f"DEBUG: Strategy {label} found {len(feed.entries)} entries")
-                
-                strategy_posts_added = 0
-                # Process up to 25 items from each list
-                for i, entry in enumerate(feed.entries[:25]):
-                    if strategy_posts_added >= target_count:
-                        break
-                    
-                    post_id = entry.get("id")
-                    if not post_id or post_id in seen_ids:
-                        continue
-                    
-                    is_in_cache = post_id in existing_posts
-                    
-                    # For "old_good" type, we want to replace/rotate, so skip if already in cache
-                    if s_type == "old_good" and is_in_cache:
-                        print(f"  SKIPPING [{label}]: Post {post_id} already in cache (Old Good rotation)")
-                        continue
-                    
-                    # For "recent" type, reuse if available
-                    if s_type == "recent" and is_in_cache:
-                        existing = existing_posts[post_id]
-                        if os.path.exists(os.path.join(BITMAP_DIR, existing["bmp_filename"])):
-                            all_posts.append(existing)
-                            seen_ids.add(post_id)
-                            strategy_posts_added += 1
-                            print(f"  REUSED [{label}]: Post {post_id}")
-                            continue
-
-                    # Otherwise, try to fetch and process image
-                    content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
-                    img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
-                    if img_matches:
-                        img_url = img_matches[0].replace("&amp;", "&")
-                        
-                        filename = f"reddit_{filename_counter}.bmp"
-                        filepath = os.path.join(BITMAP_DIR, filename)
-                        
-                        try:
-                            # Test image processing
-                            title_to_overlay = entry.title if reddit_global_cache["config"].get("show_titles") else None
-                            await asyncio.to_thread(
-                                image_processor.process_image_url, 
-                                img_url, filepath,
-                                resize_mode='fit',
-                                title=title_to_overlay
-                            )
-                            
-                            all_posts.append({
-                                "id": post_id,
-                                "title": entry.title,
-                                "url": entry.link,
-                                "img_url": img_url,
-                                "bmp_filename": filename,
-                                "strategy": label
-                            })
-                            
-                            seen_ids.add(post_id)
-                            strategy_posts_added += 1
-                            filename_counter += 1
-                            print(f"  SUCCESS [{label}]: Added post {len(all_posts)}")
-                        except Exception as e:
-                            print(f"  SKIPPED [{label}]: Image processing failed: {e}")
-                            continue
-                            
-            if not all_posts:
-                print("WARNING: No posts fetched from Reddit. Keeping old cache.")
-                return
-
-            # Atomically update global cache after successful fetch loop
-            reddit_global_cache["posts"] = all_posts
-            reddit_global_cache["last_update"] = datetime.datetime.now()
-            reddit_global_cache["config"]["subreddit"] = subreddit
-            save_reddit_cache()
-            
-            # Cleanup orphaned files: ALL reddit_*.bmp files on disk that are not in the new cache
-            reddit_files_on_disk = {f for f in os.listdir(BITMAP_DIR) if f.startswith("reddit_") and f.endswith(".bmp")}
-            new_filenames = {p["bmp_filename"] for p in all_posts if isinstance(p, dict) and "bmp_filename" in p}
-            orphaned_files = reddit_files_on_disk - new_filenames
-            for orphan in orphaned_files:
-                orphan_path = os.path.join(BITMAP_DIR, orphan)
                 try:
-                    os.remove(orphan_path)
-                    print(f"DEBUG: Cleaned up orphaned reddit bitmap: {orphan}")
-                except Exception as e:
-                    print(f"ERROR: Failed to remove orphan {orphan}: {e}")
+                    response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
+                    if response.status_code != 200:
+                        continue
+                    
+                    feed = feedparser.parse(response.content)
+                    strategy_posts_added = 0
+                    
+                    for entry in feed.entries[:25]:
+                        if strategy_posts_added >= target_count:
+                            break
+                        
+                        post_id = entry.get("id")
+                        if not post_id or post_id in seen_ids:
+                            continue
+                        
+                        is_in_cache = post_id in existing_posts
+                        
+                        # Reuse existing if same config
+                        if is_in_cache:
+                            existing = existing_posts[post_id]
+                            # Check if the existing image matches current bit_depth and dimensions
+                            # For simplicity, if we change config, we re-process.
+                            # But if nothing changed, reuse.
+                            if existing.get("bit_depth") == bit_depth and \
+                               existing.get("width") == width and \
+                               existing.get("height") == height and \
+                               os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])):
+                                
+                                all_posts.append(existing)
+                                seen_ids.add(post_id)
+                                strategy_posts_added += 1
+                                continue
 
-            print(f"Reddit global cache updated: {len(all_posts)} posts dithered using revised strategy")
+                        # Process new image
+                        content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
+                        img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
+                        if img_matches:
+                            img_url = img_matches[0].replace("&amp;", "&")
+                            
+                            filename = f"reddit_{clean_mac}_{filename_counter}.png"
+                            filepath = os.path.join(BITMAP_DIR, filename)
+                            
+                            try:
+                                title_to_overlay = entry.title if show_titles else None
+                                await asyncio.to_thread(
+                                    image_processor.process_image_url, 
+                                    img_url, filepath,
+                                    target_size=(width, height),
+                                    title=title_to_overlay,
+                                    bit_depth=bit_depth,
+                                    clip_pct=clip_pct,
+                                    cost_pct=cost_pct,
+                                    apply_gamma=apply_gamma,
+                                    dither_mode=dither_mode
+                                )
+                                
+                                all_posts.append({
+                                    "id": post_id,
+                                    "title": entry.title,
+                                    "url": entry.link,
+                                    "img_url": img_url,
+                                    "filename": filename,
+                                    "strategy": label,
+                                    "bit_depth": bit_depth,
+                                    "width": width,
+                                    "height": height
+                                })
+                                
+                                seen_ids.add(post_id)
+                                strategy_posts_added += 1
+                                filename_counter += 1
+                            except Exception as e:
+                                print(f"  SKIPPED: Image processing failed for {post_id}: {e}")
+                                continue
+                except Exception as e:
+                    print(f"ERROR: Strategy {label} failed: {e}")
+                    continue
+                            
+        if not all_posts:
+            print(f"WARNING: No posts fetched for {mac}. Keeping old cache.")
+            return
+
+        # Update cache
+        cache["posts"] = all_posts
+        cache["last_update"] = datetime.datetime.now()
+        cache["config"] = config
+        save_device_reddit_cache(mac, cache)
         
-    except Exception as e:
-        print(f"Failed to refresh global Reddit cache: {e}")
+        # Cleanup orphaned files for THIS device
+        reddit_files_on_disk = {f for f in os.listdir(BITMAP_DIR) if f.startswith(f"reddit_{clean_mac}_")}
+        new_filenames = {p["filename"] for p in all_posts if isinstance(p, dict) and "filename" in p}
+        orphaned_files = reddit_files_on_disk - new_filenames
+        for orphan in orphaned_files:
+            try:
+                os.remove(os.path.join(BITMAP_DIR, orphan))
+            except:
+                pass
+
+        print(f"Reddit cache updated for {mac}: {len(all_posts)} posts")
+        
+    finally:
+        if db_session is None:
+            db.close()"}]}
 
 
 # Dependency to get the database session
@@ -383,6 +399,16 @@ def get_db():
 
 # --- Device APIs ---
 
+DEFAULT_REDDIT_CONFIG = {
+    "subreddit": "aww", 
+    "sort": "top", 
+    "time": "day", 
+    "show_titles": True,
+    "bit_depth": 1,
+    "width": 400,
+    "height": 300
+}
+
 @app.get("/api/setup")
 def setup_device(id: str = Header(None), db: Session = Depends(get_db)):
     if not id:
@@ -393,12 +419,21 @@ def setup_device(id: str = Header(None), db: Session = Depends(get_db)):
     if not device:
         api_key = str(uuid.uuid4()).replace("-", "")
         friendly_id = f"DEVICE_{id.replace(':', '')[-6:]}"
-        device = database.Device(mac_address=id, api_key=api_key, friendly_id=friendly_id)
+        device = database.Device(
+            mac_address=id, 
+            api_key=api_key, 
+            friendly_id=friendly_id,
+            reddit_config=DEFAULT_REDDIT_CONFIG
+        )
         db.add(device)
         db.commit()
         db.refresh(device)
         message = "Device successfully registered"
     else:
+        # Update old devices if they lack reddit_config fields
+        if not device.reddit_config:
+            device.reddit_config = DEFAULT_REDDIT_CONFIG
+            db.commit()
         message = "Device already registered"
 
     return {"status": 200, "api_key": device.api_key, "friendly_id": device.friendly_id, "message": message}
@@ -456,21 +491,22 @@ def get_display(
             # Increment for next time
             device.current_image_index = (idx + 1) % len(images)
     elif device.active_dish == "reddit":
-        posts = reddit_global_cache.get("posts", [])
+        # Load per-device Reddit cache
+        cache = load_device_reddit_cache(id)
+        posts = cache.get("posts", [])
+        
         if posts:
-            # Stateless selection: use current total minutes from epoch mod total posts
-            # This ensures that as long as the client doesn't request more than once per minute,
-            # they get a consistent sequence without duplicates for the duration of the cache size.
-            total_minutes = int(datetime.datetime.now(datetime.UTC).timestamp() // 60)
-            idx = total_minutes % len(posts)
+            # Simple rotation or pick based on time
+            # For now, just use the current_image_index to cycle through reddit posts
+            idx = device.current_image_index % len(posts)
+            filename = posts[idx].get("filename", "placeholder.bmp")
             
-            current_post = posts[idx]
-            filename = current_post["bmp_filename"]
-            
-            # Update current_image_index for visibility in Admin UI
-            device.current_image_index = idx
+            # Increment index for next time
+            device.current_image_index = (device.current_image_index + 1) % len(posts)
         else:
-            filename = "placeholder.bmp" # Fallback if no reddit posts found
+            # If cache is empty, trigger a background refresh and show placeholder
+            asyncio.create_task(refresh_device_reddit_cache(id))
+            filename = "placeholder.bmp"
     
     # Update contact time only after successful image selection
     now_utc = datetime.datetime.now(datetime.UTC)
@@ -567,10 +603,9 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
 
 @app.get("/admin/reddit/preview/{mac}")
 def reddit_preview(mac: str, db: Session = Depends(get_db)):
-    # Return the global cache. The mac is kept for future per-device customization if needed.
-    # Include server local time and timezone for UI
+    cache = load_device_reddit_cache(mac)
+    
     now = datetime.datetime.now()
-    # Get server local timezone name
     try:
         import time
         server_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
@@ -578,33 +613,25 @@ def reddit_preview(mac: str, db: Session = Depends(get_db)):
         server_tz = "Local"
 
     return {
-        "posts": reddit_global_cache["posts"],
-        "last_update": reddit_global_cache["last_update"].isoformat() if reddit_global_cache["last_update"] else None,
-        "last_update_formatted": reddit_global_cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if reddit_global_cache["last_update"] else "Never",
-        "rate_hours": reddit_global_cache["rate_hours"],
+        "posts": cache["posts"],
+        "last_update": cache["last_update"].isoformat() if cache["last_update"] else None,
+        "last_update_formatted": cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if cache["last_update"] else "Never",
         "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
-        "server_tz": server_tz
+        "server_tz": server_tz,
+        "config": cache.get("config", {})
     }
 
-@app.post("/admin/reddit/fetch_now")
-async def fetch_reddit_now(config: dict = Body(...), db: Session = Depends(get_db)):
-    """Manually trigger a Reddit cache refresh."""
-    subreddit = config.get("subreddit")
-    show_titles = config.get("show_titles", False)
-    
-    # Update cache config
-    reddit_global_cache["config"] = {
-        "subreddit": subreddit or reddit_global_cache["config"].get("subreddit", "memes"),
-        "show_titles": show_titles
-    }
-    save_reddit_cache()
-
-    print(f"DEBUG: Manual fetch triggered for r/{reddit_global_cache['config']['subreddit']} (Show titles: {show_titles})")
+@app.post("/admin/reddit/fetch_now/{mac}")
+async def fetch_reddit_now(mac: str, db: Session = Depends(get_db)):
+    """Manually trigger a Reddit cache refresh for a specific device."""
+    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    print(f"DEBUG: Manual fetch triggered for {mac}")
     
     # Start the fetch in the background
-    asyncio.create_task(refresh_global_reddit_cache(
-        subreddit=reddit_global_cache["config"]["subreddit"]
-    ))
+    asyncio.create_task(refresh_device_reddit_cache(mac))
     
     return {"status": "fetch_started"}
 
