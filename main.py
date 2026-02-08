@@ -224,6 +224,9 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         db = db_session
         
     try:
+        # Check if directory exists
+        os.makedirs(BITMAP_DIR, exist_ok=True)
+        
         device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
         if not device:
             print(f"ERROR: Device {mac} not found for Reddit refresh")
@@ -247,7 +250,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         sharpen_amount = float(config.get("sharpen_amount", 0.0))
         auto_optimize = config.get("auto_optimize", False)
             
-        print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit)")
+        print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit, {width}x{height})")
 
         # Mixed strategy: get Top/Day and Hot
         strategies = [
@@ -289,10 +292,13 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                 try:
                     response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
                     if response.status_code != 200:
+                        print(f"  ERROR: Strategy {label} failed with status {response.status_code}")
                         continue
                     
                     feed = feedparser.parse(response.content)
                     strategy_posts_added = 0
+                    
+                    print(f"  DEBUG: Strategy {label} found {len(feed.entries)} entries")
                     
                     for entry in feed.entries[:25]:
                         if strategy_posts_added >= target_count:
@@ -328,9 +334,22 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                         # Process new image
                         content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
                         img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
+                        img_url = None
+                        
                         if img_matches:
                             img_url = img_matches[0].replace("&amp;", "&")
+                        elif 'media_content' in entry:
+                            # Some feeds use media_content
+                            img_url = entry.media_content[0]['url']
+                        elif entry.link.endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                            # Sometimes the link itself is the image
+                            img_url = entry.link
                             
+                        if img_url:
+                            # Filter out tracking pixels or small icons if possible
+                            if "out.reddit.com" in img_url or "pixel.redditmedia.com" in img_url:
+                                continue
+                                
                             filename = f"reddit_{clean_mac}_{filename_counter}.png"
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
@@ -371,6 +390,9 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             except Exception as e:
                                 print(f"  SKIPPED: Image processing failed for {post_id}: {e}")
                                 continue
+                        else:
+                            # print(f"  DEBUG: No image found for {post_id}")
+                            pass
                 except Exception as e:
                     print(f"ERROR: Strategy {label} failed: {e}")
                     continue
@@ -419,11 +441,11 @@ DEFAULT_REDDIT_CONFIG = {
     "sort": "top", 
     "time": "day", 
     "show_titles": True,
-    "bit_depth": 1,
+    "bit_depth": 2,
     "width": 400,
     "height": 300,
-    "apply_gamma": False,
-    "clip_pct": 22,
+    "apply_gamma": True,
+    "clip_pct": 20,
     "cost_pct": 6,
     "dither_strength": 1.0,
     "sharpen_amount": 0.0,

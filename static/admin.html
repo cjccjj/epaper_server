@@ -211,8 +211,8 @@
                         <div class="config-group">
                             <label>Bit Depth</label>
                             <div class="segmented-control" id="galleryBitDepthControl">
-                                <button class="segment-btn active" data-val="fs" onclick="setGalleryBitDepth('fs')">1bit (BW)</button>
-                                <button class="segment-btn" data-val="fs4g" onclick="setGalleryBitDepth('fs4g')">2bit (4G)</button>
+                                <button class="segment-btn" data-val="fs" onclick="setGalleryBitDepth('fs')">1bit (BW)</button>
+                                <button class="segment-btn active" data-val="fs4g" onclick="setGalleryBitDepth('fs4g')">2bit (4G)</button>
                             </div>
                         </div>
                         <div class="config-group">
@@ -262,8 +262,8 @@
                             <input type="range" id="cost" min="0" max="60" value="6" oninput="dom.costValue.textContent = this.value; process()">
                             <span class="val" id="costValue">6</span>
                         </div>
-                        <div class="config-group" style="justify-content: flex-end;">
-                            <button class="btn-add" onclick="upload()" style="height: 28px; padding: 0 16px;">Add to Gallery</button>
+                        <div class="config-group">
+                            <!-- Empty group -->
                         </div>
                     </div>
                 </div>
@@ -324,8 +324,8 @@
                         <div class="config-group">
                             <label>Bit Depth</label>
                             <div class="segmented-control" id="redditBitDepthControl">
-                                <button class="segment-btn active" data-val="1" onclick="setRedditBitDepth('1')">1bit (BW)</button>
-                                <button class="segment-btn" data-val="2" onclick="setRedditBitDepth('2')">2bit (4G)</button>
+                                <button class="segment-btn" data-val="1" onclick="setRedditBitDepth('1')">1bit (BW)</button>
+                                <button class="segment-btn active" data-val="2" onclick="setRedditBitDepth('2')">2bit (4G)</button>
                             </div>
                         </div>
                         <div class="config-group">
@@ -451,15 +451,22 @@
                 dom.aiOptimizeBtn.textContent = "⌛ Analyzing...";
                 aiInfo.textContent = "AI is analyzing image...";
                 
-                // Create a small version of the image for AI analysis
+                // Create a small version of the image for AI analysis (resized to device size)
                 const tempCanvas = document.createElement('canvas');
                 const ctx = tempCanvas.getContext('2d');
-                const maxDim = 400;
-                let w = img.width, h = img.height;
-                if (w > h) { if (w > maxDim) { h *= maxDim/w; w = maxDim; } }
-                else { if (h > maxDim) { w *= maxDim/h; h = maxDim; } }
-                tempCanvas.width = w; tempCanvas.height = h;
-                ctx.drawImage(img, 0, 0, w, h);
+                const tw = parseInt(dom.deviceW.value) || 400;
+                const th = parseInt(dom.deviceH.value) || 300;
+                
+                // Crop resize to fill target size (same as process() logic)
+                const scale = Math.max(tw / img.width, th / img.height);
+                const nw = img.width * scale;
+                const nh = img.height * scale;
+                const ox = (tw - nw) / 2;
+                const oy = (th - nh) / 2;
+                
+                tempCanvas.width = tw;
+                tempCanvas.height = th;
+                ctx.drawImage(img, ox, oy, nw, nh);
                 
                 const blob = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/jpeg', 0.8));
                 const fd = new FormData();
@@ -638,6 +645,8 @@
                         process(); 
                     };
                     img.onerror = (err) => {
+                        if (!img.src || img.src.includes('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==')) return; // Ignore empty or transparent pixel
+                        if (img.src.endsWith('/')) return; // Ignore empty src
                         console.error("Image load error:", err);
                         alert("Failed to load image.");
                     };
@@ -830,11 +839,18 @@
                     dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
                 }
 
-                // If fetching, update status box
+                // If fetching, update status box and poll
                 if (data.status === 'fetching') {
                     const statusBox = document.getElementById('redditStatus');
                     if (statusBox) {
                         statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Starting...'}</span>`;
+                    }
+                    // Poll again in 2 seconds
+                    setTimeout(loadRedditPreview, 2000);
+                } else {
+                    const statusBox = document.getElementById('redditStatus');
+                    if (statusBox) {
+                        statusBox.innerHTML = `<span style="color: #10b981;">✅ Idle</span>`;
                     }
                 }
             } catch (e) {

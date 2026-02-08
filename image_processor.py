@@ -57,27 +57,28 @@ def download_image(url):
 
 def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD):
     """
-    Resize image to fit within target_size. 
-    If the required padding is less than stretch_threshold, stretch the image instead.
+    Resize and crop image to fill target_size (Crop-to-fill).
+    This matches the frontend logic and ensures we always have an image.
     """
     tw, th = target_size
     iw, ih = img.size
     
-    # Calculate scale factor for fitting
-    scale = min(tw / iw, th / ih)
+    # Calculate scale factor for filling (crop-to-fill)
+    scale = max(tw / iw, th / ih)
     nw, nh = int(iw * scale), int(ih * scale)
     
-    # Calculate how much of the target area would be 'fill' (padding)
-    target_area = tw * th
-    fitted_area = nw * nh
-    fill_ratio = (target_area - fitted_area) / target_area
+    # Calculate offsets for centering the crop
+    ox = (tw - nw) // 2
+    oy = (th - nh) // 2
     
-    if fill_ratio <= stretch_threshold:
-        # If the gap is small, just stretch it to full target size
-        return img.resize(target_size, Image.Resampling.LANCZOS)
-    else:
-        # User cheat: do not pad. If padding is needed, we drop this image.
-        raise ValueError(f"Image requires {fill_ratio:.1%} padding, which exceeds {stretch_threshold:.1%} threshold. Dropping.")
+    # Resize and then crop (or paste onto a target canvas)
+    img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+    
+    # Create target canvas and paste the resized image centered
+    target = Image.new("RGB", (tw, th), (255, 255, 255))
+    target.paste(img, (ox, oy))
+    
+    return target
 
 def apply_ac(data, clip_pct=22, cost_pct=6):
     """Weighted Approaching Auto-Contrast logic ported from JS."""
