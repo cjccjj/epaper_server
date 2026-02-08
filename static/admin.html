@@ -216,12 +216,16 @@
                         </div>
                         <div class="control-group">
                             <label>Dither</label>
-                            <select id="ditherMode">
+                            <select id="ditherMode" onchange="toggleStrengthSlider(); process()">
                                 <option value="burkes">Burkes (BW)</option>
                                 <option value="fs">Floyd-Steinberg (BW)</option>
                                 <option value="fs4g">4G FS (Gray)</option>
-                                <option value="nd4g">4G ND (Gray)</option>
                             </select>
+                        </div>
+                        <div class="control-group" id="strengthGroup" style="display:none;">
+                            <label>Dither %</label>
+                            <input type="range" id="ditherStrength" min="0" max="100" value="100" oninput="dom.ditherStrengthValue.textContent = this.value; process()">
+                            <span class="val"><span id="ditherStrengthValue">100</span>%</span>
                         </div>
                     </div>
                 </div>
@@ -306,6 +310,14 @@
                         </div>
                     </div>
 
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label>Dither %</label>
+                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="dom.redditDitherStrengthValue.textContent = this.value">
+                            <span class="val"><span id="redditDitherStrengthValue">100</span>%</span>
+                        </div>
+                    </div>
+
                     <div id="redditStatus" style="font-size: 10px; color: var(--text-dim); padding: 4px 8px; background: var(--panel); border-radius: 4px; border: 1px solid var(--border); display: flex; justify-content: space-between;">
                         <span>Last Fetch: <span id="lastFetchTime">Never</span></span>
                         <span>Rate: every <span id="fetchRate">3</span>h</span>
@@ -361,13 +373,23 @@
             redditClip: document.getElementById('redditClip'),
             redditCost: document.getElementById('redditCost'),
             redditPreview: document.getElementById('redditPreview'),
-            fetchNowBtn: document.getElementById('fetchNowBtn')
+            fetchNowBtn: document.getElementById('fetchNowBtn'),
+            ditherStrength: document.getElementById('ditherStrength'),
+            ditherStrengthValue: document.getElementById('ditherStrengthValue'),
+            redditDitherStrength: document.getElementById('redditDitherStrength'),
+            redditDitherStrengthValue: document.getElementById('redditDitherStrengthValue'),
+            strengthGroup: document.getElementById('strengthGroup')
         };
 
         // Event Listeners for Range Sliders
         // Removed as they are now handled in init()
         const gOri = dom.cOri.getContext('2d');
         const gDit = dom.cDit.getContext('2d');
+
+        function toggleStrengthSlider() {
+            const mode = dom.ditherMode.value;
+            dom.strengthGroup.style.display = (mode === 'fs' || mode === 'fs4g') ? 'block' : 'none';
+        }
 
         async function init() {
             await fetchDevices();
@@ -527,6 +549,7 @@
                 subreddit: dom.redditSub.value || 'memes',
                 show_titles: dom.redditShowTitle.checked,
                 bit_depth: parseInt(dom.redditBitDepth.value) || 1,
+                dither_strength: parseInt(dom.redditDitherStrength.value) / 100,
                 apply_gamma: dom.redditGamma.checked,
                 clip_pct: parseInt(dom.redditClip.value) || 22,
                 cost_pct: parseInt(dom.redditCost.value) || 6
@@ -683,11 +706,14 @@
                 dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
                 dom.redditClip.value = d.reddit_config.clip_pct || 22;
                 dom.redditCost.value = d.reddit_config.cost_pct || 6;
+                dom.redditDitherStrength.value = (d.reddit_config.dither_strength !== undefined) ? d.reddit_config.dither_strength * 100 : 100;
                 
                 const clipValEl = document.getElementById('redditClipValue');
                 const costValEl = document.getElementById('redditCostValue');
+                const strengthValEl = document.getElementById('redditDitherStrengthValue');
                 if (clipValEl) clipValEl.textContent = dom.redditClip.value;
                 if (costValEl) costValEl.textContent = dom.redditCost.value;
+                if (strengthValEl) strengthValEl.textContent = dom.redditDitherStrength.value;
             } else {
                 // Default values if no config
                 dom.redditSub.value = '';
@@ -696,8 +722,10 @@
                 dom.redditGamma.checked = false;
                 dom.redditClip.value = 22;
                 dom.redditCost.value = 6;
+                dom.redditDitherStrength.value = 100;
                 document.getElementById('redditClipValue').textContent = "22";
                 document.getElementById('redditCostValue').textContent = "6";
+                document.getElementById('redditDitherStrengthValue').textContent = "100";
             }
         }
 
@@ -810,20 +838,16 @@
             // 4. Dithering (on a copy so we don't mess up the auto-contrast display)
             const ditherData = new Uint8ClampedArray(data);
             const dMode = dom.ditherMode.value;
-            if (dMode === 'nd4g') {
-                for (let i = 0; i < ditherData.length; i += 4) {
-                    const old = ditherData[i];
-                    const nw_val = Math.round(old / 85) * 85;
-                    ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
-                }
-            } else if (dMode === 'fs4g') {
+            const strength = parseInt(dom.ditherStrength.value) / 100;
+
+            if (dMode === 'fs4g') {
                 for (let y = 0; y < th; y++) {
                     const ltr = y % 2 === 0;
                     for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
                         const i = (y * tw + x) * 4;
                         const old = ditherData[i];
                         const nw_val = Math.round(old / 85) * 85;
-                        const err = old - nw_val;
+                        const err = (old - nw_val) * strength;
                         ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                         const add = (nx, ny, f) => {
                             if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
@@ -853,7 +877,7 @@
                         const i = (y * tw + x) * 4;
                         const old = ditherData[i];
                         const nw_val = old < 128 ? 0 : 255;
-                        const err = old - nw_val;
+                        const err = (old - nw_val) * strength;
                         ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
                         const add = (nx, ny, f) => {
                             if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {

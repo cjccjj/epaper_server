@@ -239,7 +239,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         clip_pct = int(config.get("clip_pct", 22 if bit_depth == 1 else 20))
         cost_pct = int(config.get("cost_pct", 6))
         apply_gamma = config.get("apply_gamma", bit_depth == 2)
-        dither_mode = 'fs4g' if bit_depth == 2 else 'burkes'
+        dither_mode = config.get("dither_mode", 'fs4g' if bit_depth == 2 else 'burkes')
+        dither_strength = float(config.get("dither_strength", 1.0))
             
         print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit)")
 
@@ -332,7 +333,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     clip_pct=clip_pct,
                                     cost_pct=cost_pct,
                                     apply_gamma=apply_gamma,
-                                    dither_mode=dither_mode
+                                    dither_mode=dither_mode,
+                                    dither_strength=dither_strength
                                 )
                                 
                                 all_posts.append({
@@ -404,7 +406,8 @@ DEFAULT_REDDIT_CONFIG = {
     "height": 300,
     "apply_gamma": False,
     "clip_pct": 22,
-    "cost_pct": 6
+    "cost_pct": 6,
+    "dither_strength": 1.0
 }
 
 @app.get("/api/setup")

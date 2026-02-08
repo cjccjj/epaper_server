@@ -233,21 +233,19 @@ def overlay_title(img, title):
     
     return img
 
-def apply_4g_fs(data):
-    """4-level Floyd-Steinberg Dithering (0, 85, 170, 255)."""
+def apply_fs(data, strength=1.0):
+    """1-bit Floyd-Steinberg Dithering with serpentine scan and strength control."""
     h, w = data.shape
     out = data.astype(np.float32)
     
     for y in range(h):
-        # Serpentine scan for better quality
         ltr = (y % 2 == 0)
         rng = range(w) if ltr else range(w - 1, -1, -1)
         
         for x in rng:
             old_val = out[y, x]
-            # Quantize to 0, 85, 170, 255
-            new_val = np.round(old_val / 85.0) * 85.0
-            err = old_val - new_val
+            new_val = 0 if old_val < 128 else 255
+            err = (old_val - new_val) * strength
             out[y, x] = new_val
             
             # Error distribution
@@ -266,9 +264,38 @@ def apply_4g_fs(data):
                     
     return np.clip(out, 0, 255).astype(np.uint8)
 
-def apply_4g_nd(data):
-    """4-level No Dither (Direct Quantization)."""
-    return (np.round(data / 85.0) * 85.0).astype(np.uint8)
+def apply_4g_fs(data, strength=1.0):
+    """4-level Floyd-Steinberg Dithering (0, 85, 170, 255) with strength control."""
+    h, w = data.shape
+    out = data.astype(np.float32)
+    
+    for y in range(h):
+        # Serpentine scan for better quality
+        ltr = (y % 2 == 0)
+        rng = range(w) if ltr else range(w - 1, -1, -1)
+        
+        for x in rng:
+            old_val = out[y, x]
+            # Quantize to 0, 85, 170, 255
+            new_val = np.round(old_val / 85.0) * 85.0
+            err = (old_val - new_val) * strength
+            out[y, x] = new_val
+            
+            # Error distribution
+            if ltr:
+                if x + 1 < w: out[y, x + 1] += err * 7 / 16
+                if y + 1 < h:
+                    if x - 1 >= 0: out[y + 1, x - 1] += err * 3 / 16
+                    out[y + 1, x] += err * 5 / 16
+                    if x + 1 < w: out[y + 1, x + 1] += err * 1 / 16
+            else:
+                if x - 1 >= 0: out[y, x - 1] += err * 7 / 16
+                if y + 1 < h:
+                    if x + 1 < w: out[y + 1, x + 1] += err * 3 / 16
+                    out[y + 1, x] += err * 5 / 16
+                    if x - 1 >= 0: out[y + 1, x - 1] += err * 1 / 16
+                    
+    return np.clip(out, 0, 255).astype(np.uint8)
 
 def save_as_png(img, path, bit_depth=1):
     """Save image as indexed PNG with specific bit depth (1 or 2)."""
@@ -306,7 +333,7 @@ def save_as_png(img, path, bit_depth=1):
 
 def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', 
                        stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1, 
-                       apply_gamma=False, dither_mode='burkes'):
+                       apply_gamma=False, dither_mode='burkes', dither_strength=1.0):
     # 1. Resize
     img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
     
@@ -326,20 +353,17 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     # 4. Apply Dithering
     if bit_depth == 1:
         if dither_mode == 'fs':
-            # Need to implement 1-bit FS with serpentine if we want to match 4G FS
-            # For now, let's just use Burkes as requested for default
-            data = apply_burkes(data)
+            data = apply_fs(data, strength=dither_strength)
         else:
             data = apply_burkes(data)
         out_img = Image.fromarray(data).convert("1")
     else:
         # 2-bit (4G)
         if dither_mode == 'fs4g':
-            data = apply_4g_fs(data)
-        elif dither_mode == 'nd4g':
-            data = apply_4g_nd(data)
+            data = apply_4g_fs(data, strength=dither_strength)
         else:
-            data = apply_4g_fs(data)
+            # Fallback to FS 4G if mode is unknown or removed nd4g
+            data = apply_4g_fs(data, strength=dither_strength)
         out_img = Image.fromarray(data).convert("L")
     
     # 5. Overlay title if provided
@@ -350,12 +374,13 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
 
 def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', 
                       stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1,
-                      clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='burkes'):
+                      clip_pct=22, cost_pct=6, apply_gamma=False, dither_mode='burkes',
+                      dither_strength=1.0):
     """Complete helper to download, process, and save an image."""
     img = download_image(url)
     processed = process_and_dither(img, target_size, clip_pct=clip_pct, cost_pct=cost_pct, 
                                    resize_mode=resize_mode, stretch_threshold=stretch_threshold, 
                                    title=title, bit_depth=bit_depth, apply_gamma=apply_gamma, 
-                                   dither_mode=dither_mode)
+                                   dither_mode=dither_mode, dither_strength=dither_strength)
     save_as_png(processed, output_path, bit_depth=bit_depth)
     return output_path
