@@ -35,6 +35,8 @@ class Device(Base):
     current_image_index = Column(Integer, default=0)
     refresh_rate = Column(Integer, default=60)
     timezone = Column(String, default="UTC")
+    display_width = Column(Integer, default=400)
+    display_height = Column(Integer, default=300)
     active_dish = Column(String, default="gallery")
     reddit_config = Column(JSON, default=lambda: {"subreddit": "aww", "sort": "top", "time": "day"})
     
@@ -71,6 +73,16 @@ def run_migrations():
             print("Migration: Adding 'timezone' column to 'devices' table")
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN timezone TEXT DEFAULT 'UTC'"))
+                conn.commit()
+        if "display_width" not in columns:
+            print("Migration: Adding 'display_width' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN display_width INTEGER DEFAULT 400"))
+                conn.commit()
+        if "display_height" not in columns:
+            print("Migration: Adding 'display_height' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN display_height INTEGER DEFAULT 300"))
                 conn.commit()
 
 def init_db():

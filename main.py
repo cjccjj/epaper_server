@@ -230,8 +230,10 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         subreddit = config.get("subreddit", "aww")
         show_titles = config.get("show_titles", True)
         bit_depth = int(config.get("bit_depth", 1))
-        width = int(config.get("width", 400))
-        height = int(config.get("height", 300))
+        
+        # Use device-level display dimensions
+        width = device.display_width or 400
+        height = device.display_height or 300
         
         # Use config settings if available, otherwise fallback to defaults
         clip_pct = int(config.get("clip_pct", 22 if bit_depth == 1 else 20))
@@ -571,6 +573,8 @@ def list_devices(db: Session = Depends(get_db)):
             "battery_voltage": d.battery_voltage,
             "rssi": d.rssi,
             "refresh_rate": d.refresh_rate,
+            "display_width": d.display_width,
+            "display_height": d.display_height,
             "timezone": d.timezone,
             "device_time": device_time,
             "active_dish": d.active_dish,
@@ -587,6 +591,10 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
     
     if "refresh_rate" in settings:
         device.refresh_rate = int(settings["refresh_rate"])
+    if "display_width" in settings:
+        device.display_width = int(settings["display_width"])
+    if "display_height" in settings:
+        device.display_height = int(settings["display_height"])
     if "timezone" in settings:
         device.timezone = settings["timezone"]
     if "active_dish" in settings:
