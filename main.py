@@ -233,19 +233,11 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         width = int(config.get("width", 400))
         height = int(config.get("height", 300))
         
-        # Determine processing parameters based on bit_depth
-        if bit_depth == 2:
-            # 2-bit: 4G dithering, gamma 2.2, 20% clip, 6% cost
-            clip_pct = 20
-            cost_pct = 6
-            apply_gamma = True
-            dither_mode = 'fs4g'
-        else:
-            # 1-bit: Default settings (Burkes, no gamma, 22% clip, 6% cost)
-            clip_pct = 22
-            cost_pct = 6
-            apply_gamma = False
-            dither_mode = 'burkes'
+        # Use config settings if available, otherwise fallback to defaults
+        clip_pct = int(config.get("clip_pct", 22 if bit_depth == 1 else 20))
+        cost_pct = int(config.get("cost_pct", 6))
+        apply_gamma = config.get("apply_gamma", bit_depth == 2)
+        dither_mode = 'fs4g' if bit_depth == 2 else 'burkes'
             
         print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit)")
 
@@ -406,7 +398,10 @@ DEFAULT_REDDIT_CONFIG = {
     "show_titles": True,
     "bit_depth": 1,
     "width": 400,
-    "height": 300
+    "height": 300,
+    "apply_gamma": False,
+    "clip_pct": 22,
+    "cost_pct": 6
 }
 
 @app.get("/api/setup")
@@ -478,7 +473,7 @@ def get_display(
         current_refresh_rate = 60
         
     # Logic to select content based on active dish
-    filename = "placeholder.bmp" # Fallback
+    filename = "placeholder.png" # Fallback
     
     if device.active_dish == "gallery":
         images = sorted(device.images, key=lambda x: x.order)
@@ -499,14 +494,14 @@ def get_display(
             # Simple rotation or pick based on time
             # For now, just use the current_image_index to cycle through reddit posts
             idx = device.current_image_index % len(posts)
-            filename = posts[idx].get("filename", "placeholder.bmp")
+            filename = posts[idx].get("filename", "placeholder.png")
             
             # Increment index for next time
             device.current_image_index = (device.current_image_index + 1) % len(posts)
         else:
             # If cache is empty, trigger a background refresh and show placeholder
             asyncio.create_task(refresh_device_reddit_cache(id))
-            filename = "placeholder.bmp"
+            filename = "placeholder.png"
     
     # Update contact time only after successful image selection
     now_utc = datetime.datetime.now(datetime.UTC)
@@ -641,9 +636,9 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
     if not device: raise HTTPException(status_code=404, detail="Device not found")
 
     # Use the original filename or generate a new one, but keep the extension
-    # Actually, we should probably force .bmp extension if we expect BMPs
+    # Actually, we should probably force .png extension if we expect PNGs
     ext = os.path.splitext(file.filename)[1]
-    if not ext: ext = ".bmp" # Default to .bmp if no extension
+    if not ext: ext = ".png" # Default to .png if no extension
     
     filename = f"{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(BITMAP_DIR, filename)

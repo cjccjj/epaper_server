@@ -230,62 +230,84 @@
                 </div>
             </div>
 
-            <!-- Reddit Dish Panel -->
             <div id="panel-reddit" class="tab-content hidden">
-                <h3>Reddit Top Config</h3>
-                <div class="reddit-config">
-                    <div class="config-group">
-                        <label style="width: 120px;">Subreddit</label>
-                        <select id="redditSub">
-                            <optgroup label="Text already in image (Memes)">
-                                <option value="memes">r/memes</option>
-                                <option value="dankmemes">r/dankmemes</option>
-                                <option value="AdviceAnimals">r/AdviceAnimals</option>
-                                <option value="wholesomememes">r/wholesomememes</option>
-                                <option value="PrequelMemes">r/PrequelMemes</option>
-                                <option value="HistoryMemes">r/HistoryMemes</option>
-                                <option value="trippinthroughtime">r/trippinthroughtime</option>
-                                <option value="me_irl">r/me_irl</option>
-                                <option value="Antimeme">r/Antimeme</option>
-                                <option value="StarterPacks">r/StarterPacks</option>
-                            </optgroup>
-                            <optgroup label="No text in image (Photos/Art)">
-                                <option value="itookapicture">r/itookapicture</option>
-                                <option value="EarthPorn">r/EarthPorn</option>
-                                <option value="Art">r/Art</option>
-                                <option value="OldSchoolCool">r/OldSchoolCool</option>
-                                <option value="MildlyInteresting">r/MildlyInteresting</option>
-                                <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
-                                <option value="StreetPhotography">r/StreetPhotography</option>
-                                <option value="DataIsBeautiful">r/DataIsBeautiful</option>
-                                <option value="WhatIsThisThing">r/WhatIsThisThing</option>
-                                <option value="FoodPorn">r/FoodPorn</option>
-                            </optgroup>
-                        </select>
+                <div class="reddit-config-container">
+                    <div class="reddit-main-config">
+                        <h3>Reddit Source</h3>
+                        <div class="config-group">
+                            <label>Subreddit</label>
+                            <select id="redditSub">
+                                <optgroup label="Memes">
+                                    <option value="memes">r/memes</option>
+                                    <option value="dankmemes">r/dankmemes</option>
+                                    <option value="AdviceAnimals">r/AdviceAnimals</option>
+                                    <option value="wholesomememes">r/wholesomememes</option>
+                                    <option value="PrequelMemes">r/PrequelMemes</option>
+                                    <option value="HistoryMemes">r/HistoryMemes</option>
+                                    <option value="trippinthroughtime">r/trippinthroughtime</option>
+                                    <option value="me_irl">r/me_irl</option>
+                                    <option value="Antimeme">r/Antimeme</option>
+                                    <option value="StarterPacks">r/StarterPacks</option>
+                                </optgroup>
+                                <optgroup label="Photos/Art">
+                                    <option value="itookapicture">r/itookapicture</option>
+                                    <option value="EarthPorn">r/EarthPorn</option>
+                                    <option value="Art">r/Art</option>
+                                    <option value="OldSchoolCool">r/OldSchoolCool</option>
+                                    <option value="MildlyInteresting">r/MildlyInteresting</option>
+                                    <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
+                                    <option value="StreetPhotography">r/StreetPhotography</option>
+                                    <option value="DataIsBeautiful">r/DataIsBeautiful</option>
+                                    <option value="WhatIsThisThing">r/WhatIsThisThing</option>
+                                    <option value="FoodPorn">r/FoodPorn</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="config-group">
+                            <label>Show Title</label>
+                            <input type="checkbox" id="redditShowTitle" style="width: auto;">
+                        </div>
                     </div>
-                    <div class="config-group">
-                        <label style="width: 120px;">Show Title</label>
-                        <input type="checkbox" id="redditShowTitle" style="width: auto;">
+
+                    <div class="reddit-image-config">
+                        <h3>Image Settings</h3>
+                        <div class="config-group">
+                            <label>Bit Depth</label>
+                            <select id="redditBitDepth" onchange="syncRedditBitDepth()">
+                                <option value="1">1-bit (BW)</option>
+                                <option value="2">2-bit (4G Gray)</option>
+                            </select>
+                        </div>
+                        <div class="config-group">
+                            <label>Target Size</label>
+                            <div class="size-inputs">
+                                <input type="number" id="redditW" value="400"> x 
+                                <input type="number" id="redditH" value="300">
+                            </div>
+                        </div>
+                        <div class="config-group">
+                            <label>Gamma 2.2</label>
+                            <input type="checkbox" id="redditGamma" style="width: auto;">
+                        </div>
+                        <div class="config-group">
+                            <label>Clip %</label>
+                            <input type="range" id="redditClip" min="0" max="60" value="22">
+                            <span class="val"><span id="redditClipValue">22</span>%</span>
+                        </div>
+                        <div class="config-group">
+                            <label>Cost %</label>
+                            <input type="range" id="redditCost" min="0" max="60" value="6">
+                            <span class="val"><span id="redditCostValue">6</span>%</span>
+                        </div>
+                        <div id="redditStatus" style="font-size: 11px; color: var(--text-dim); margin-top: 10px; padding: 8px; background: var(--panel-light); border-radius: 4px;">
+                            Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">3</span> hours
+                        </div>
                     </div>
-                    <div class="config-group">
-                        <label style="width: 120px;">Bit Depth</label>
-                        <select id="redditBitDepth" style="width: 120px;">
-                            <option value="1">1-bit (BW)</option>
-                            <option value="2">2-bit (4G Gray)</option>
-                        </select>
-                    </div>
-                    <div class="config-group">
-                        <label style="width: 120px;">Target Size</label>
-                        <input type="number" id="redditW" value="400" style="width: 60px;"> x 
-                        <input type="number" id="redditH" value="300" style="width: 60px;">
-                    </div>
-                    <div id="redditStatus" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-                        Last Fetch: <span id="lastFetchTime">Never</span> | Fetch Rate: every <span id="fetchRate">3</span> hours
-                    </div>
-                    <div class="config-actions">
-                        <button class="btn-save" onclick="saveRedditConfig()">Save Config</button>
-                        <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()">⚡ Save Config and Fetch Now</button>
-                    </div>
+                </div>
+
+                <div class="config-actions" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+                    <button class="btn-save" onclick="saveRedditConfig()">Save Config</button>
+                    <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()">⚡ Save Config and Fetch Now</button>
                 </div>
                 <div id="redditPreview" class="reddit-preview-list">
                     <!-- Top 10 posts will be loaded here -->
@@ -329,9 +351,15 @@
             redditBitDepth: document.getElementById('redditBitDepth'),
             redditW: document.getElementById('redditW'),
             redditH: document.getElementById('redditH'),
+            redditGamma: document.getElementById('redditGamma'),
+            redditClip: document.getElementById('redditClip'),
+            redditCost: document.getElementById('redditCost'),
             redditPreview: document.getElementById('redditPreview'),
             fetchNowBtn: document.getElementById('fetchNowBtn')
         };
+
+        // Event Listeners for Range Sliders
+        // Removed as they are now handled in init()
         const gOri = dom.cOri.getContext('2d');
         const gDit = dom.cDit.getContext('2d');
 
@@ -365,11 +393,12 @@
                 });
             });
 
-            [dom.clip, dom.cost].forEach(i => {
+            [dom.clip, dom.cost, dom.redditClip, dom.redditCost].forEach(i => {
                 i.addEventListener('input', () => {
                     let displayVal = i.value;
-                    document.getElementById(i.id+'Value').textContent = displayVal;
-                    process();
+                    const valEl = document.getElementById(i.id+'Value');
+                    if (valEl) valEl.textContent = displayVal;
+                    if (!i.id.startsWith('reddit')) process();
                 });
             });
 
@@ -486,7 +515,10 @@
                 show_titles: dom.redditShowTitle.checked,
                 bit_depth: parseInt(dom.redditBitDepth.value) || 1,
                 width: parseInt(dom.redditW.value) || 400,
-                height: parseInt(dom.redditH.value) || 300
+                height: parseInt(dom.redditH.value) || 300,
+                apply_gamma: dom.redditGamma.checked,
+                clip_pct: parseInt(dom.redditClip.value) || 22,
+                cost_pct: parseInt(dom.redditCost.value) || 6
             };
             const d = devices.find(x => x.mac_address === currentMac);
             if (d) d.reddit_config = config;
@@ -528,6 +560,24 @@
                 // Silently fail if fetch is in progress or server is busy
                 console.log('Reddit preview load skipped or failed:', e);
             }
+        }
+
+        function syncRedditBitDepth() {
+            const depth = dom.redditBitDepth.value;
+            if (depth === "2") {
+                // 2-bit defaults: gamma 2.2, 20% clip, 6% cost
+                dom.redditGamma.checked = true;
+                dom.redditClip.value = 20;
+                dom.redditCost.value = 6;
+            } else {
+                // 1-bit defaults: no gamma, 22% clip, 6% cost
+                dom.redditGamma.checked = false;
+                dom.redditClip.value = 22;
+                dom.redditCost.value = 6;
+            }
+            // Trigger value updates for labels
+            document.getElementById('redditClipValue').textContent = dom.redditClip.value;
+            document.getElementById('redditCostValue').textContent = dom.redditCost.value;
         }
 
         async function fetchDevices() {
@@ -612,6 +662,11 @@
                 dom.redditBitDepth.value = d.reddit_config.bit_depth || "1";
                 dom.redditW.value = d.reddit_config.width || 400;
                 dom.redditH.value = d.reddit_config.height || 300;
+                dom.redditGamma.checked = d.reddit_config.apply_gamma === true;
+                dom.redditClip.value = d.reddit_config.clip_pct || 22;
+                dom.redditCost.value = d.reddit_config.cost_pct || 6;
+                document.getElementById('redditClipValue').textContent = dom.redditClip.value;
+                document.getElementById('redditCostValue').textContent = dom.redditCost.value;
             }
         }
 
