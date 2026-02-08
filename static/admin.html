@@ -201,8 +201,9 @@
                     
                     <div class="control-row">
                         <div class="control-group">
-                            <label>AI Auto</label>
-                            <input type="checkbox" id="autoOptimize" style="width: auto;" onchange="toggleAIAuto(); process()">
+                            <label>AI Stylist</label>
+                            <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">✨ Optimize</button>
+                            <input type="checkbox" id="autoOptimize" style="display: none;">
                         </div>
                         <div class="control-group">
                             <label>Gamma</label>
@@ -411,48 +412,50 @@
         }
 
         async function toggleAIAuto() {
-            const isAuto = dom.autoOptimize.checked;
-            // Disable sliders if auto is on
-            dom.gamma.disabled = isAuto;
-            dom.sharpen.disabled = isAuto;
-            dom.ditherStrength.disabled = isAuto;
-            if (isAuto) {
-                dom.gamma.parentElement.style.opacity = '0.5';
-                dom.sharpen.parentElement.style.opacity = '0.5';
-                dom.ditherStrength.parentElement.style.opacity = '0.5';
-                
-                // Trigger AI analysis if we have an image
-                if (img.src) {
-                    try {
-                        dom.stats.textContent = "AI is analyzing image...";
-                        const blob = await fetch(img.src).then(r => r.blob());
-                        const fd = new FormData();
-                        fd.append('file', blob);
-                        const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
-                        const style = await res.json();
+            // For Gallery, we treat this as a "one-shot" optimization button if it's called via the button
+            // but we also keep the checkbox logic for state management.
+            const isAuto = true; // Button click always triggers optimization
+            
+            // Trigger AI analysis if we have an image
+            if (img.src) {
+                try {
+                    dom.stats.textContent = "AI is analyzing image...";
+                    const blob = await fetch(img.src).then(r => r.blob());
+                    const fd = new FormData();
+                    fd.append('file', blob);
+                    const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
+                    const style = await res.json();
+                    
+                    if (style && !style.error) {
+                        console.log("AI Style Analysis:", style);
+                        // Apply parameters based on AI analysis logic (mirroring backend)
+                        let sh = 0.2;
+                        if (style.has_text_overlay || style.content_type === "text_heavy") sh = 1.0;
+                        else if (style.content_type === "comic_illustration") sh = 0.5;
                         
-                        if (style && !style.error) {
-                            console.log("AI Style Analysis:", style);
-                            // Apply parameters based on AI analysis
-                            dom.sharpen.value = style.has_text_overlay ? 1.0 : 0.2;
-                            dom.ditherStrength.value = (style.gradient_complexity === "low") ? 40 : 100;
-                            // Update labels
-                            dom.sharpenAmountValue.textContent = dom.sharpen.value;
-                            dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
-                            
-                            dom.stats.textContent = `AI Mode: ${style.content_type}, Text: ${style.has_text_overlay}, Gradient: ${style.gradient_complexity}`;
-                            process();
-                        }
-                    } catch (e) {
-                        console.error("AI Analysis failed:", e);
-                        dom.stats.textContent = "AI Analysis failed, using defaults.";
+                        let dt = 1.0;
+                        if (style.gradient_complexity === "low") dt = 0.4;
+                        
+                        let gm = (style.content_type === "comic_illustration");
+
+                        // Update UI sliders to match AI choice
+                        dom.sharpen.value = sh;
+                        dom.ditherStrength.value = dt * 100;
+                        dom.gamma.value = gm ? 2.2 : 1.0; // Use 1.0 for linear/no-gamma
+
+                        // Update labels
+                        dom.sharpenAmountValue.textContent = dom.sharpen.value;
+                        dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
+                        dom.gammaValValue.textContent = dom.gamma.value;
+                        
+                        const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gm?'2.2':'None'}`;
+                        dom.stats.textContent = `AI Mode: ${style.content_type}, Text: ${style.has_text_overlay}, Grad: ${style.gradient_complexity} | ${applied}`;
+                        process();
                     }
+                } catch (e) {
+                    console.error("AI Analysis failed:", e);
+                    dom.stats.textContent = "AI Analysis failed.";
                 }
-            } else {
-                dom.gamma.parentElement.style.opacity = '1';
-                dom.sharpen.parentElement.style.opacity = '1';
-                dom.ditherStrength.parentElement.style.opacity = '1';
-                process();
             }
         }
 
@@ -546,6 +549,8 @@
                 }
             });
 
+            dom.redditAutoOptimize.addEventListener('change', toggleRedditAIAuto);
+
             dom.addBtn.addEventListener('click', upload);
         }
 
@@ -604,16 +609,23 @@
                 });
                 
                 if (res.ok) {
+                    const statusBox = document.getElementById('redditStatus');
+                    statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetch triggered...</span>`;
+                    
                     // Poll for progress
                     const pollInterval = setInterval(async () => {
                         await loadRedditPreview();
                         // Check if finished
                         const res2 = await fetch(`/admin/reddit/preview/${currentMac}`);
                         const data = await res2.json();
-                        if (data.status !== 'fetching') {
+                        
+                        if (data.status === 'fetching') {
+                            statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Processing...'}</span>`;
+                        } else {
                             clearInterval(pollInterval);
                             dom.fetchNowBtn.disabled = false;
                             dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
+                            statusBox.innerHTML = '<span style="color: #10b981;">✅ Fetch Complete!</span>';
                             setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
                         }
                     }, 2000);
@@ -676,7 +688,11 @@
                         let labelHtml = '';
                         if (labels) {
                             const lStr = `${labels.content_type}, text: ${labels.has_text_overlay}, grad: ${labels.gradient_complexity}`;
-                            labelHtml = `<div class="post-labels" style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">AI: ${lStr}</div>`;
+                            let appliedStr = '';
+                            if (labels.applied) {
+                                appliedStr = ` | sh:${labels.applied.sharpen} dt:${labels.applied.dither} gm:${labels.applied.gamma}`;
+                            }
+                            labelHtml = `<div class="post-labels" style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">AI: ${lStr}${appliedStr}</div>`;
                         }
                         return `
                             <div class="reddit-post">
@@ -695,7 +711,9 @@
                 // If fetching, update status box
                 if (data.status === 'fetching') {
                     const statusBox = document.getElementById('redditStatus');
-                    statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Starting...'}</span>`;
+                    if (statusBox) {
+                        statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Starting...'}</span>`;
+                    }
                 }
             } catch (e) {
                 // Silently fail if fetch is in progress or server is busy

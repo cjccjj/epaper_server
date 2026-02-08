@@ -355,18 +355,35 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
         print(f"AI Optimization labels: {ai_labels}")
         
         # Mapping labels to parameters
-        if style.has_text_overlay:
+        # 1. Sharpening: aggressive for text, moderate for comics (to keep lines clean), low for photos
+        if style.has_text_overlay or style.content_type == "text_heavy":
             sharpen_amount = 1.0
+        elif style.content_type == "comic_illustration":
+            sharpen_amount = 0.5
         else:
             sharpen_amount = 0.2
             
+        # 2. Dithering: low for flat colors (comics), high for photos
         if style.gradient_complexity == "low":
             dither_strength = 0.4
         else:
             dither_strength = 1.0
             
+        # 3. Gamma: 
+        # For comics/illustrations, we often want more punchy contrast (higher gamma to darken mids or keep them clean)
+        # For photos, 2.2 is standard.
         if style.content_type == "comic_illustration":
-            apply_gamma = True # Force gamma for comics
+            apply_gamma = True # Use 2.2 gamma
+        else:
+            apply_gamma = False # Use linear/no-gamma (default)
+
+        # Record applied settings in labels for UI transparency
+        if ai_labels:
+            ai_labels["applied"] = {
+                "sharpen": f"{int(sharpen_amount*100)}%",
+                "dither": f"{int(dither_strength*100)}%",
+                "gamma": "2.2" if apply_gamma else "None"
+            }
             
     # 3. Sharpening
     if sharpen_amount > 0:
@@ -387,10 +404,8 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     
     # 6. Apply Dithering
     if bit_depth == 1:
-        if dither_mode == 'fs':
-            data = apply_fs(data, strength=dither_strength)
-        else:
-            data = apply_burkes(data)
+        # 1-bit: Use FS (Burkes is removed as requested)
+        data = apply_fs(data, strength=dither_strength)
         out_img = Image.fromarray(data).convert("1")
     else:
         # 2-bit (4G)
