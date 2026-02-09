@@ -87,6 +87,7 @@ document.addEventListener('alpine:init', () => {
             try {
                 const res = await fetch('/admin/devices');
                 this.devices = await res.json();
+                console.log("Fetched devices:", this.devices);
             } catch (e) {
                 console.error("Failed to fetch devices:", e);
             }
@@ -184,11 +185,11 @@ document.addEventListener('alpine:init', () => {
                 width: parseInt(this.deviceSettings.display_width),
                 height: parseInt(this.deviceSettings.display_height),
                 bitDepth: this.galleryConfig.bitDepth,
-                clipPct: this.galleryConfig.clip / 100,
-                costPct: this.galleryConfig.cost / 100,
-                gamma: this.gammaLabels[this.galleryConfig.gamma],
-                sharpen: parseFloat(this.galleryConfig.sharpen),
-                ditherStrength: this.galleryConfig.ditherStrength / 100
+                clipPct: parseInt(this.galleryConfig.clip || 0) / 100,
+                costPct: parseInt(this.galleryConfig.cost || 0) / 100,
+                gamma: this.gammaLabels[parseInt(this.galleryConfig.gamma || 0)],
+                sharpen: parseFloat(this.galleryConfig.sharpen || 0),
+                ditherStrength: parseInt(this.galleryConfig.ditherStrength || 0) / 100
             };
 
             const result = ImageProcess.process(this.img, canvases, options);
@@ -242,9 +243,9 @@ document.addEventListener('alpine:init', () => {
                     this.galleryConfig.sharpen = sh;
                     this.galleryConfig.ditherStrength = dt * 100;
                     this.galleryConfig.gamma = gmIndex;
-                    this.galleryConfig.bitDepth = 'fs'; // Default to BW for AI optimization as per original code
                     
-                    const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${this.gammaLabels[gmIndex].toFixed(1)}`;
+                    const gammaVal = (this.gammaLabels && this.gammaLabels[gmIndex] !== undefined) ? this.gammaLabels[gmIndex].toFixed(1) : '1.0';
+                    const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gammaVal}`;
                     this.aiInfo = `${style.content_type} | ${applied}`;
                     
                     this.processImage();
@@ -279,7 +280,7 @@ document.addEventListener('alpine:init', () => {
                 if (res.ok) {
                     await this.fetchDevices();
                     await this.loadGallery();
-                    alert("Uploaded successfully!");
+                    // Successfully uploaded
                 } else {
                     alert("Upload failed.");
                 }
@@ -401,16 +402,15 @@ document.addEventListener('alpine:init', () => {
 
         setRedditBitDepth(depth) {
             this.redditConfig.bit_depth = parseInt(depth);
-            if (this.redditConfig.bit_depth === 2) {
-                this.redditConfig.gamma_index = 6; // 2.2
-                this.redditConfig.clip_percent = 20;
-                this.redditConfig.cost_percent = 6;
-                this.redditConfig.sharpen_amount = 0.2;
-            } else {
-                this.redditConfig.gamma_index = 0; // 1.0
-                this.redditConfig.clip_percent = 22;
-                this.redditConfig.cost_percent = 6;
-                this.redditConfig.sharpen_amount = 0;
+            // Presets for other values, but only if AI Auto is OFF
+            if (!this.redditConfig.auto_optimize) {
+                if (this.redditConfig.bit_depth === 2) {
+                    this.redditConfig.gamma_index = 6; // 2.2
+                    this.redditConfig.sharpen_amount = 0.2;
+                } else {
+                    this.redditConfig.gamma_index = 0; // 1.0
+                    this.redditConfig.sharpen_amount = 0;
+                }
             }
         }
     }));
