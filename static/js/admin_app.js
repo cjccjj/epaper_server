@@ -51,7 +51,8 @@ document.addEventListener('alpine:init', () => {
         
         // UI Helpers
         isAnalyzingAI: false,
-        aiInfo: '',
+                isUploading: false,
+                aiInfo: '',
         gammaLabels: [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4],
 
         // --- Init ---
@@ -262,6 +263,7 @@ document.addEventListener('alpine:init', () => {
             const canvas = document.getElementById('cDither');
             if (!canvas || !this.currentMac) return;
 
+            this.isUploading = true;
             const bitDepth = this.galleryConfig.bitDepth;
             const pngData = ImageProcess.canvasToPNG(canvas, bitDepth);
             
@@ -284,6 +286,8 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 console.error("Upload error:", e);
                 alert("Upload error.");
+            } finally {
+                this.isUploading = false;
             }
         },
 

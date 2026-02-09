@@ -200,7 +200,9 @@
             <div class="config-container" style="max-width: 600px;">
                 <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                     <input type="file" @change="handleFileUpload" accept="image/*" style="width: 180px;">
-                    <button @click="uploadToGallery" class="btn-add">Add to Gallery</button>
+                    <button @click="uploadToGallery" class="btn-add" :disabled="isUploading">
+                        <span x-text="isUploading ? '⏳ Uploading...' : 'Add to Gallery'"></span>
+                    </button>
                     <div class="stats" x-text="stats" style="margin-left: 8px; flex: 1;"></div>
                 </div>
 
@@ -212,18 +214,11 @@
                             <button class="segment-btn" :class="{ active: galleryConfig.bitDepth === 'fs4g' }" @click="galleryConfig.bitDepth = 'fs4g'; processImage()">2bit (4G)</button>
                         </div>
                     </div>
-                    <div class="config-group"></div>
-                </div>
-
-                <div class="config-row">
-                    <div class="config-group">
-                        <label>AI Auto</label>
-                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                            <button @click="aiOptimize" :disabled="isAnalyzingAI" style="background: var(--primary); color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; height: 28px; display: flex; align-items: center; gap: 4px;">
-                                <span x-text="isAnalyzingAI ? '⌛ Analyzing...' : '✨ AI Optimize'"></span>
-                            </button>
-                            <div x-text="aiInfo" style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;"></div>
-                        </div>
+                    <div class="config-group" style="flex: 1; justify-content: flex-end; display: flex; align-items: center; gap: 8px;">
+                        <div x-text="aiInfo" style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;"></div>
+                        <button @click="aiOptimize()" :disabled="isAnalyzingAI" style="background: var(--primary); color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; height: 28px; display: flex; align-items: center; gap: 4px;">
+                            <span x-text="isAnalyzingAI ? '⏳ Analyzing...' : '✨ AI Stylist Optimize'"></span>
+                        </button>
                     </div>
                 </div>
 
