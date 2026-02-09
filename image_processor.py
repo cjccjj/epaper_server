@@ -45,15 +45,42 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
     # 1. Decide resize method from strategy
     # Literals: "crop", "padding", "stretch"
     resize_method = strategy.get("resize_method", "crop")
+    max_stretch = strategy.get("max_stretch", 0.0)
     tw, th = target_size
     
     if resize_method == "stretch":
-        img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
+        # Check if we should use smart stretch (within limits) or fill
+        iw, ih = img_ori.size
+        target_ratio = tw / th
+        img_ratio = iw / ih
+        ratio_diff = abs(img_ratio - target_ratio) / target_ratio
+        
+        if ratio_diff <= max_stretch:
+            # Within stretch tolerance: pure stretch
+            img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
+        else:
+            # Beyond stretch tolerance: fill (crop-to-fill)
+            img = fit_resize(img_ori, target_size)
+            
     elif resize_method == "padding":
         # Padding fit: resize to fit inside target and pad with white/black
+        padding_color_pref = strategy.get("padding_color", "auto")
+        
         img = img_ori.copy()
         img.thumbnail((tw, th), Image.Resampling.LANCZOS)
-        new_img = Image.new("L", (tw, th), 255) # White background
+        
+        # Determine background color
+        bg_color = 255 # Default white
+        if padding_color_pref == "black":
+            bg_color = 0
+        elif padding_color_pref == "auto":
+            # Simple auto: if image is dark, use black; if light, use white
+            # We use the thumbnail to get a quick average
+            temp_l = img.convert("L")
+            avg_pixel = np.mean(np.array(temp_l))
+            bg_color = 0 if avg_pixel < 128 else 255
+            
+        new_img = Image.new("L", (tw, th), bg_color)
         offset = ((tw - img.width) // 2, (th - img.height) // 2)
         new_img.paste(img.convert("L"), offset)
         img = new_img
@@ -77,6 +104,8 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
     
     # 5. Gamma Correction
     if gamma_val != 1.0:
+        # Clamp gamma between 0.7 and 1.3 per AI design.md
+        gamma_val = max(0.7, min(1.3, gamma_val))
         data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
     
     data = data.astype(np.uint8)
@@ -93,9 +122,12 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
         out_img = Image.fromarray(data).convert("L")
         
     # 8. Text Overlay (Step 7)
-    # Use AI's analysis for has_text_overlay (used to be show_titles)
-    show_titles = ai_analysis.get("has_text_overlay", True)
-    if title and show_titles:
+    # Use AI's analysis for text_density and show_titles preference
+    # If text_density is high, we might want to skip title overlay to avoid clutter
+    text_density = ai_analysis.get("text_density", "none")
+    show_titles_config = ai_analysis.get("show_titles", True)
+    
+    if title and show_titles_config and text_density != "high":
         out_img = overlay_title(out_img, title)
         
     # Build debug info string

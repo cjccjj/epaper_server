@@ -383,6 +383,9 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     continue
                                     
                                 strategy = await reddit_ai.get_process_strategy(ai_analysis)
+                                if strategy.get("decision") == "skip":
+                                    print(f"      STRATEGY DECISION: SKIP - Dropped by processing rules.")
+                                    continue
                                 
                                 # Download only if AI says 'use'
                                 print(f"      Downloading: {img_url}")
