@@ -6,6 +6,9 @@
     <title>E-Paper Admin</title>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/static/js/image_process.js"></script>
+    <script src="/static/js/admin_app.js"></script>
     <style>
         :root { 
             --primary: #3b82f6; 
@@ -19,6 +22,8 @@
         }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 12px; background: var(--bg); color: var(--text); font-size: 13px; }
         
+        [x-cloak] { display: none !important; }
+
         /* Layout */
         .admin-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; background: var(--panel); padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); }
         .admin-header h2 { margin: 0; font-size: 1.1rem; color: var(--primary); margin-right: 12px; }
@@ -30,8 +35,7 @@
         .dish-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; color: var(--text-dim); transition: 0.2s; display: flex; align-items: center; gap: 8px; }
         .dish-item:hover { background: var(--panel-light); color: var(--text); }
         .dish-item.active { background: var(--primary); color: white; }
-        .dish-item i { font-size: 14px; }
-
+        
         select, input { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
         
         /* Content Area */
@@ -49,48 +53,30 @@
         .gallery { display: flex; flex-wrap: wrap; gap: 6px; }
         .image-item { position: relative; width: 200px; height: 150px; background: #000; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; }
         .image-item img { width: 100%; height: 100%; object-fit: cover; }
-        .image-item .delete-btn { position: absolute; top: 0; right: 0; background: rgba(239, 68, 68, 0.9); color: white; border: none; padding: 0 3px; font-size: 9px; cursor: pointer; }
-        
-        /* Panels */
-        .dish-panel { background: var(--panel); padding: 10px; border-radius: 6px; border: 1px solid var(--border); }
-        .dish-panel h3 { margin: 0 0 10px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .image-item .delete-btn { position: absolute; top: 0; right: 0; background: rgba(239, 68, 68, 0.9); color: white; border: none; padding: 0 3px; font-size: 9px; cursor: pointer; z-index: 10; }
+        .image-item .active-badge { position: absolute; bottom: 0; left: 0; background: #10b981; color: white; font-size: 8px; padding: 1px 4px; font-weight: bold; }
         
         /* Unified Config Panel Style */
         .config-container { background: var(--panel-light); padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-width: 550px; }
-        .config-container h3 { margin: 0 0 5px 0; font-size: 0.9rem; color: var(--primary); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
         .config-row { display: flex; align-items: center; gap: 15px; }
         .config-group { display: flex; align-items: center; gap: 8px; flex: 1; }
         .config-group label { min-width: 65px; color: var(--text-dim); font-size: 11px; font-weight: 500; }
         .config-group select, .config-group input { flex: 1; height: 28px; font-size: 12px; }
         .config-group input[type="range"] { flex: 1; height: 12px; margin: 0; padding: 0; width: 100%; cursor: pointer; }
         .config-group .val { min-width: 35px; text-align: right; color: var(--primary); font-weight: bold; font-size: 11px; }
-        .config-group input[type="checkbox"] { flex: 0; width: 14px; height: 14px; cursor: pointer; }
-        .compact-label { min-width: auto !important; margin-right: 2px; }
         
-        /* Segmented Control (for Bit Depth / Dither Mode) */
+        /* Segmented Control */
         .segmented-control { display: flex; background: var(--input-bg); padding: 2px; border-radius: 4px; border: 1px solid var(--border); gap: 2px; flex: 1; height: 28px; box-sizing: border-box; }
         .segment-btn { flex: 1; background: transparent; border: none; color: var(--text-dim); font-size: 10px; cursor: pointer; border-radius: 3px; transition: 0.2s; font-weight: 600; }
         .segment-btn:hover { color: var(--text); }
         .segment-btn.active { background: var(--primary); color: white; }
 
         .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
-        .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; cursor: pointer; transition: transform 0.2s; }
+        .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; cursor: pointer; transition: transform 0.2s; position: relative; }
         .reddit-post:hover { transform: translateY(-2px); border-color: var(--primary); }
         .reddit-post img { width: 100%; height: 150px; object-fit: cover; background: #000; }
         .reddit-post .post-title { padding: 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 
-        /* Gallery Pipeline */
-        .controls-top { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-        .control-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
-        .control-group { display: flex; align-items: center; gap: 6px; min-width: 300px; }
-        .control-group label { white-space: nowrap; font-weight: 500; min-width: 70px; }
-        .control-group input[type="range"] { width: 200px; height: 4px; }
-        .control-group .val { min-width: 25px; text-align: right; color: var(--primary); font-weight: bold; }
-
-        .size-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; }
-        .size-inputs { display: flex; align-items: center; gap: 4px; }
-        .size-inputs input { width: 45px; }
-        
         .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         .preview-box { display: flex; flex-direction: column; gap: 4px; }
         .preview-box h4 { margin: 0; font-size: 11px; color: var(--text-dim); }
@@ -98,17 +84,13 @@
 
         .btn-add { background: var(--primary); color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .btn-add:hover { background: #2563eb; }
-        .btn-save { background: #10b981; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin-top: 8px; align-self: flex-start; }
+        .btn-save { background: #10b981; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .btn-save:hover { background: #059669; }
-        
-        .btn-fetch { background: #6366f1; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin-top: 8px; }
+        .btn-fetch { background: #6366f1; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .btn-fetch:hover { background: #4f46e5; }
         .btn-fetch:disabled { background: #94a3b8; cursor: not-allowed; }
 
-        .config-actions { display: flex; gap: 10px; }
-        
         .stats { font-size: 10px; color: var(--text-dim); }
-        .reddit-status-row { font-size: 10px; color: var(--text-dim); margin-top: -4px; margin-bottom: 4px; display: flex; gap: 10px; }
         .hidden { display: none !important; }
 
         /* Dish Selector Row */
@@ -133,1209 +115,282 @@
         #overlay img { max-width: 98%; max-height: 98%; }
     </style>
 </head>
-<body>
+<body x-data="adminApp" x-cloak>
 
     <div class="admin-header">
         <h2>E-Paper Admin</h2>
         <div class="device-selector">
-            <select id="deviceSelect"><option value="">-- Select Device --</option></select>
+            <select x-model="currentMac" @change="selectDevice($event.target.value)">
+                <option value="">-- Select Device --</option>
+                <template x-for="device in devices" :key="device.mac_address">
+                    <option :value="device.mac_address" x-text="device.name"></option>
+                </template>
+            </select>
         </div>
     </div>
 
-    <div id="deviceView" class="hidden">
-        <div class="content-area">
-            <div class="device-info">
-                <div class="device-header">
-                    <h3 id="deviceName">Device</h3>
-                    <div class="refresh-rate-box">
-                        <label>Refresh:</label>
-                        <input type="number" id="refreshRate" value="60" min="10" style="width: 40px;">
-                        <span>s</span>
-                        
-                        <label style="margin-left: 10px;">Size:</label>
-                        <input type="number" id="deviceW" value="400" min="100" style="width: 45px;">
-                        <span>x</span>
-                        <input type="number" id="deviceH" value="300" min="100" style="width: 45px;">
-                        
-                        <label style="margin-left: 10px;">TZ:</label>
-                        <select id="deviceTimezone" style="width: 100px;">
-                            <option value="UTC">UTC</option>
-                            <option value="America/New_York">New York</option>
-                            <option value="America/Chicago">Chicago</option>
-                            <option value="America/Denver">Denver</option>
-                            <option value="America/Los_Angeles">Los Angeles</option>
-                            <option value="Europe/London">London</option>
-                            <option value="Europe/Paris">Paris</option>
-                            <option value="Asia/Tokyo">Tokyo</option>
-                            <option value="Asia/Shanghai">Shanghai</option>
-                            <option value="Asia/Hong_Kong">Hong Kong</option>
-                            <option value="Asia/Singapore">Singapore</option>
-                            <option value="Asia/Seoul">Seoul</option>
-                            <option value="Australia/Sydney">Sydney</option>
-                            <option value="Australia/Melbourne">Melbourne</option>
-                            <option value="Pacific/Auckland">Auckland</option>
+    <div x-show="currentMac" class="content-area">
+        <div class="device-info">
+            <div class="device-header">
+                <h3 x-text="deviceSettings.name || 'Device'">Device</h3>
+                <div class="refresh-rate-box">
+                    <label>Refresh:</label>
+                    <input type="number" x-model="deviceSettings.refresh_rate" @change="saveDeviceSettings" min="10" style="width: 40px;">
+                    <span>s</span>
+                    
+                    <label style="margin-left: 10px;">Size:</label>
+                    <input type="number" x-model="deviceSettings.display_width" @change="saveDeviceSettings" min="100" style="width: 45px;">
+                    <span>x</span>
+                    <input type="number" x-model="deviceSettings.display_height" @change="saveDeviceSettings" min="100" style="width: 45px;">
+                    
+                    <label style="margin-left: 10px;">TZ:</label>
+                    <select x-model="deviceSettings.timezone" @change="saveDeviceSettings" style="width: 100px;">
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">New York</option>
+                        <option value="America/Chicago">Chicago</option>
+                        <option value="America/Denver">Denver</option>
+                        <option value="America/Los_Angeles">Los Angeles</option>
+                        <option value="Europe/London">London</option>
+                        <option value="Europe/Paris">Paris</option>
+                        <option value="Asia/Tokyo">Tokyo</option>
+                        <option value="Asia/Shanghai">Shanghai</option>
+                        <option value="Asia/Hong_Kong">Hong Kong</option>
+                        <option value="Asia/Singapore">Singapore</option>
+                        <option value="Asia/Seoul">Seoul</option>
+                        <option value="Australia/Sydney">Sydney</option>
+                        <option value="Australia/Melbourne">Melbourne</option>
+                        <option value="Pacific/Auckland">Auckland</option>
+                    </select>
+                </div>
+            </div>
+            <div class="device-meta">
+                <template x-if="currentMac">
+                    <span x-text="`MAC: ${currentMac}`"></span>
+                </template>
+            </div>
+            
+            <!-- Dish Selector -->
+            <div class="dish-selector-row">
+                <label>Active Dish:</label>
+                <div class="dish-toggle-group">
+                    <button class="dish-btn" :class="{ 'active-dish': activeDish === 'gallery' }" @click="setActiveDish('gallery')">🖼️ Gallery</button>
+                    <button class="dish-btn" :class="{ 'active-dish': activeDish === 'reddit' }" @click="setActiveDish('reddit')">Reddit Top</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Bar -->
+        <div class="tab-bar">
+            <button class="tab-btn" :class="{ active: currentTab === 'gallery' }" @click="showTab('gallery')">🖼️ Gallery Config</button>
+            <button class="tab-btn" :class="{ active: currentTab === 'reddit' }" @click="showTab('reddit')">Reddit Config</button>
+        </div>
+
+        <!-- Gallery Dish Panel -->
+        <div x-show="currentTab === 'gallery'" class="tab-content">
+            <h3>🖼️ Gallery Manager</h3>
+            <div class="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                <template x-for="item in galleryItems" :key="item.filename">
+                    <div class="image-item" @click="showOverlay(item.url)">
+                        <img :src="item.url">
+                        <button class="delete-btn" @click.stop="deleteImage(item.filename)">×</button>
+                        <div x-show="item.active" class="active-badge">ACTIVE</div>
+                        <template x-if="!item.active">
+                            <button @click.stop="setAsActive(item.filename)" style="position: absolute; bottom: 0; right: 0; background: var(--primary); color: white; border: none; font-size: 8px; padding: 1px 4px; cursor: pointer;">SET ACTIVE</button>
+                        </template>
+                    </div>
+                </template>
+            </div>
+            
+            <div class="config-container" style="max-width: 600px;">
+                <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                    <input type="file" @change="handleFileUpload" accept="image/*" style="width: 180px;">
+                    <button @click="uploadToGallery" class="btn-add">Add to Gallery</button>
+                    <div class="stats" x-text="stats" style="margin-left: 8px; flex: 1;"></div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Bit Depth</label>
+                        <div class="segmented-control">
+                            <button class="segment-btn" :class="{ active: galleryConfig.bitDepth === 'fs' }" @click="galleryConfig.bitDepth = 'fs'; processImage()">1bit (BW)</button>
+                            <button class="segment-btn" :class="{ active: galleryConfig.bitDepth === 'fs4g' }" @click="galleryConfig.bitDepth = 'fs4g'; processImage()">2bit (4G)</button>
+                        </div>
+                    </div>
+                    <div class="config-group"></div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>AI Auto</label>
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                            <button @click="aiOptimize" :disabled="isAnalyzingAI" style="background: var(--primary); color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                <span x-text="isAnalyzingAI ? '⌛ Analyzing...' : '✨ AI Optimize'"></span>
+                            </button>
+                            <div x-text="aiInfo" style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Gamma</label>
+                        <input type="range" x-model="galleryConfig.gamma" min="0" max="7" step="1" @input="processImage()">
+                        <span class="val" x-text="gammaLabels[galleryConfig.gamma].toFixed(1)">1.0</span>
+                    </div>
+                    <div class="config-group">
+                        <label>Sharpen</label>
+                        <input type="range" x-model="galleryConfig.sharpen" min="0" max="2.0" step="0.1" @input="processImage()">
+                        <span class="val" x-text="parseFloat(galleryConfig.sharpen).toFixed(1)">0.0</span>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Dither %</label>
+                        <input type="range" x-model="galleryConfig.ditherStrength" min="0" max="100" @input="processImage()">
+                        <span class="val" x-text="galleryConfig.ditherStrength">100</span>
+                    </div>
+                    <div class="config-group">
+                        <label>Clip %</label>
+                        <input type="range" x-model="galleryConfig.clip" min="0" max="60" @input="processImage()">
+                        <span class="val" x-text="galleryConfig.clip">22</span>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Cost %</label>
+                        <input type="range" x-model="galleryConfig.cost" min="0" max="60" @input="processImage()">
+                        <span class="val" x-text="galleryConfig.cost">6</span>
+                    </div>
+                    <div class="config-group"></div>
+                </div>
+            </div>
+
+            <div class="previews-container" style="margin-top: 15px;">
+                <div class="preview-box">
+                    <h4>Original</h4>
+                    <canvas id="cOriginal"></canvas>
+                </div>
+                <div class="preview-box">
+                    <h4>Dithered</h4>
+                    <canvas id="cDither"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reddit Dish Panel -->
+        <div x-show="currentTab === 'reddit'" class="tab-content">
+            <div class="config-container" style="max-width: 600px;">
+                <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                    <div class="config-group">
+                        <label>Subreddit</label>
+                        <select x-model="redditConfig.subreddit" @change="handleRedditSubChange()" style="max-width: 140px;">
+                            <option value="">-- Choose --</option>
+                            <optgroup label="Memes">
+                                <option value="memes">r/memes</option>
+                                <option value="dankmemes">r/dankmemes</option>
+                                <option value="AdviceAnimals">r/AdviceAnimals</option>
+                                <option value="wholesomememes">r/wholesomememes</option>
+                                <option value="PrequelMemes">r/PrequelMemes</option>
+                                <option value="HistoryMemes">r/HistoryMemes</option>
+                                <option value="trippinthroughtime">r/trippinthroughtime</option>
+                                <option value="me_irl">r/me_irl</option>
+                                <option value="Antimeme">r/Antimeme</option>
+                                <option value="StarterPacks">r/StarterPacks</option>
+                            </optgroup>
+                            <optgroup label="Photos/Art">
+                                <option value="EarthPorn">r/EarthPorn</option>
+                                <option value="Art">r/Art</option>
+                                <option value="OldSchoolCool">r/OldSchoolCool</option>
+                                <option value="MildlyInteresting">r/MildlyInteresting</option>
+                                <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
+                                <option value="StreetPhotography">r/StreetPhotography</option>
+                                <option value="DataIsBeautiful">r/DataIsBeautiful</option>
+                                <option value="WhatIsThisThing">r/WhatIsThisThing</option>
+                                <option value="FoodPorn">r/FoodPorn</option>
+                            </optgroup>
                         </select>
                     </div>
-                </div>
-                <div class="device-meta" id="deviceMeta"></div>
-                
-                <!-- Dish Selector -->
-                <div class="dish-selector-row">
-                    <label>Active Dish:</label>
-                    <div class="dish-toggle-group">
-                        <button class="dish-btn" data-dish="gallery" onclick="setActiveDish('gallery')">🖼️ Gallery</button>
-                        <button class="dish-btn" data-dish="reddit" onclick="setActiveDish('reddit')">Reddit Top</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tabs Bar -->
-            <div class="tab-bar">
-                <button class="tab-btn" data-tab="gallery" onclick="showTab('gallery')">🖼️ Gallery Config</button>
-                <button class="tab-btn" data-tab="reddit" onclick="showTab('reddit')">Reddit Config</button>
-            </div>
-
-            <!-- Gallery Dish Panel -->
-            <div id="panel-gallery" class="tab-content hidden">
-                <h3>🖼️ Gallery Manager</h3>
-                <div class="gallery" id="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;"></div>
-                
-                <div class="config-container" style="max-width: 600px;">
-                    <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
-                        <input type="file" id="upload" accept="image/*" style="width: 180px;">
-                        <button id="addBtn" class="btn-add">Add to Gallery</button>
-                        <div class="stats" id="stats" style="margin-left: 8px; flex: 1;"></div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Bit Depth</label>
-                            <div class="segmented-control" id="galleryBitDepthControl">
-                                <button class="segment-btn" data-val="fs" onclick="setGalleryBitDepth('fs')">1bit (BW)</button>
-                                <button class="segment-btn active" data-val="fs4g" onclick="setGalleryBitDepth('fs4g')">2bit (4G)</button>
-                            </div>
-                        </div>
-                        <div class="config-group">
-                            <!-- Empty group to align with 2-column layout -->
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>AI Auto</label>
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                <button id="aiOptimizeBtn" onclick="toggleAIAuto()" style="background: var(--primary); color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; height: 28px; display: flex; align-items: center; gap: 4px;">✨ AI Optimize</button>
-                                <div id="aiInfo" style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Gamma</label>
-                            <input type="range" id="gammaVal" min="0" max="7" step="1" value="0" oninput="updateGammaLabel(this.value, 'gammaValValue'); process()">
-                            <span class="val" id="gammaValValue">1.0</span>
-                        </div>
-                        <div class="config-group">
-                            <label>Sharpen</label>
-                            <input type="range" id="sharpenAmount" min="0" max="2.0" step="0.1" value="0" oninput="dom.sharpenAmountValue.textContent = this.value; process()">
-                            <span class="val" id="sharpenAmountValue">0.0</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Dither %</label>
-                            <input type="range" id="ditherStrength" min="0" max="100" value="100" oninput="dom.ditherStrengthValue.textContent = this.value; process()">
-                            <span class="val" id="ditherStrengthValue">100</span>
-                        </div>
-                        <div class="config-group">
-                            <label>Clip %</label>
-                            <input type="range" id="clip" min="0" max="60" value="22" oninput="dom.clipValue.textContent = this.value; process()">
-                            <span class="val" id="clipValue">22</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Cost %</label>
-                            <input type="range" id="cost" min="0" max="60" value="6" oninput="dom.costValue.textContent = this.value; process()">
-                            <span class="val" id="costValue">6</span>
-                        </div>
-                        <div class="config-group">
-                            <!-- Empty group -->
-                        </div>
+                    <div class="config-group">
+                        <label class="compact-label">Show Title</label>
+                        <input type="checkbox" x-model="redditConfig.show_title">
+                        
+                        <label class="compact-label" style="margin-left: 10px;">AI Auto</label>
+                        <input type="checkbox" x-model="redditConfig.auto_optimize">
                     </div>
                 </div>
 
-                <div class="previews-container" style="margin-top: 15px;">
-                    <div class="preview-box">
-                        <h4>Original</h4>
-                        <canvas id="cOriginal"></canvas>
+                <div class="reddit-status-row">
+                    <div id="redditStatus" x-html="redditStatus">Ready</div>
+                    <template x-if="redditConfig.auto_optimize">
+                        <div style="color: #6366f1;">✨ AI Auto Enabled</div>
+                    </template>
+                </div>
+
+                <div class="config-row" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
+                    <div class="config-group">
+                        <label>Bit Depth</label>
+                        <div class="segmented-control">
+                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 1 }" @click="setRedditBitDepth(1)">1bit (BW)</button>
+                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 2 }" @click="setRedditBitDepth(2)">2bit (4G)</button>
+                        </div>
                     </div>
-                    <div class="preview-box">
-                        <h4>Dithered</h4>
-                        <canvas id="cDither"></canvas>
+                    <div class="config-group">
+                        <label>Gamma</label>
+                        <input type="range" x-model="redditConfig.gamma_index" min="0" max="7" step="1">
+                        <span class="val" x-text="gammaLabels[redditConfig.gamma_index].toFixed(1)">1.0</span>
+                    </div>
+                </div>
+
+                <div class="config-row" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
+                    <div class="config-group">
+                        <label>Sharpen</label>
+                        <input type="range" x-model="redditConfig.sharpen_amount" min="0" max="2.0" step="0.1">
+                        <span class="val" x-text="parseFloat(redditConfig.sharpen_amount).toFixed(1)">0.0</span>
+                    </div>
+                    <div class="config-group">
+                        <label>Dither %</label>
+                        <input type="range" x-model="redditConfig.dither_strength" min="0" max="1" step="0.01" @input="redditConfig.dither_strength = parseFloat($event.target.value)">
+                        <span class="val" x-text="Math.round(redditConfig.dither_strength * 100)">100</span>
+                    </div>
+                </div>
+
+                <div class="config-row" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
+                    <div class="config-group">
+                        <label>Clip %</label>
+                        <input type="range" x-model="redditConfig.clip_percent" min="0" max="60">
+                        <span class="val" x-text="redditConfig.clip_percent">22</span>
+                    </div>
+                    <div class="config-group">
+                        <label>Cost %</label>
+                        <input type="range" x-model="redditConfig.cost_percent" min="0" max="60">
+                        <span class="val" x-text="redditConfig.cost_percent">6</span>
+                    </div>
+                </div>
+
+                <div class="config-row">
+                    <div class="config-actions" style="flex: 1; justify-content: flex-end; display: flex; gap: 8px;">
+                        <button class="btn-save" @click="saveRedditConfig()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Save Config</button>
+                        <button class="btn-fetch" @click="fetchRedditNow()" :disabled="isFetchingReddit" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">
+                            <span x-text="isFetchingReddit ? '⏳ Saving & Fetching...' : '⚡ Save Config and Fetch Now'"></span>
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Reddit Dish Panel -->
-            <div id="panel-reddit" class="tab-content hidden">
-                <div class="config-container" style="max-width: 600px;">
-                    <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
-                        <div class="config-group">
-                            <label>Subreddit</label>
-                            <select id="redditSub" style="max-width: 140px;">
-                                <option value="">-- Choose --</option>
-                                <optgroup label="Memes">
-                                    <option value="memes">r/memes</option>
-                                    <option value="dankmemes">r/dankmemes</option>
-                                    <option value="AdviceAnimals">r/AdviceAnimals</option>
-                                    <option value="wholesomememes">r/wholesomememes</option>
-                                    <option value="PrequelMemes">r/PrequelMemes</option>
-                                    <option value="HistoryMemes">r/HistoryMemes</option>
-                                    <option value="trippinthroughtime">r/trippinthroughtime</option>
-                                    <option value="me_irl">r/me_irl</option>
-                                    <option value="Antimeme">r/Antimeme</option>
-                                    <option value="StarterPacks">r/StarterPacks</option>
-                                </optgroup>
-                                <optgroup label="Photos/Art">
-                                    <option value="itookapicture">r/itookapicture</option>
-                                    <option value="EarthPorn">r/EarthPorn</option>
-                                    <option value="Art">r/Art</option>
-                                    <option value="OldSchoolCool">r/OldSchoolCool</option>
-                                    <option value="MildlyInteresting">r/MildlyInteresting</option>
-                                    <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
-                                    <option value="StreetPhotography">r/StreetPhotography</option>
-                                    <option value="DataIsBeautiful">r/DataIsBeautiful</option>
-                                    <option value="WhatIsThisThing">r/WhatIsThisThing</option>
-                                    <option value="FoodPorn">r/FoodPorn</option>
-                                </optgroup>
-                            </select>
-                        </div>
-                        <div class="config-group" style="flex: 0; min-width: 100px;">
-                            <label class="compact-label">Show Title</label>
-                            <input type="checkbox" id="redditShowTitle">
-                        </div>
+            <div class="reddit-preview-list">
+                <template x-for="post in redditPreview" :key="post.url">
+                    <div class="reddit-post" @click="showOverlay(post.url)">
+                        <img :src="post.url">
+                        <div class="post-title" x-text="post.title"></div>
                     </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Bit Depth</label>
-                            <div class="segmented-control" id="redditBitDepthControl">
-                                <button class="segment-btn" data-val="1" onclick="setRedditBitDepth('1')">1bit (BW)</button>
-                                <button class="segment-btn active" data-val="2" onclick="setRedditBitDepth('2')">2bit (4G)</button>
-                            </div>
-                        </div>
-                        <div class="config-group">
-                            <label class="compact-label">AI Auto</label>
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                <input type="checkbox" id="redditAutoOptimize" style="width: auto;" onchange="toggleRedditAIAuto()">
-                                <div id="redditStatus" style="font-size: 10px; color: var(--text-dim);">Ready</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Gamma</label>
-                            <input type="range" id="redditGammaSlider" min="0" max="7" step="1" value="0" oninput="updateGammaLabel(this.value, 'redditGammaValue')">
-                            <span class="val" id="redditGammaValue">1.0</span>
-                        </div>
-                        <div class="config-group">
-                            <label>Sharpen</label>
-                            <input type="range" id="redditSharpen" min="0" max="2.0" step="0.1" value="0" oninput="dom.redditSharpenValue.textContent = this.value">
-                            <span class="val" id="redditSharpenValue">0.0</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Dither %</label>
-                            <input type="range" id="redditDitherStrength" min="0" max="100" value="100" oninput="dom.redditDitherStrengthValue.textContent = this.value">
-                            <span class="val" id="redditDitherStrengthValue">100</span>
-                        </div>
-                        <div class="config-group">
-                            <label>Clip %</label>
-                            <input type="range" id="redditClip" min="0" max="60" value="22" oninput="dom.redditClipValue.textContent = this.value">
-                            <span class="val" id="redditClipValue">22</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <label>Cost %</label>
-                            <input type="range" id="redditCost" min="0" max="60" value="6" oninput="dom.redditCostValue.textContent = this.value">
-                            <span class="val" id="redditCostValue">6</span>
-                        </div>
-                        <div class="config-actions" style="flex: 1; justify-content: flex-end; display: flex; gap: 8px;">
-                            <button class="btn-save" onclick="saveRedditConfig()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Save Config</button>
-                            <button id="fetchNowBtn" class="btn-fetch" onclick="fetchRedditNow()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Fetch Now</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="redditPreview" class="reddit-preview-list">
-                    <!-- Top posts will be loaded here -->
-                </div>
+                </template>
             </div>
         </div>
     </div>
 
-    <div id="overlay" onclick="this.style.display='none'"><img id="overlayImg"></div>
+    <div id="overlay" @click="$el.style.display='none'"><img id="overlayImg"></div>
 
-    <script>
-        let currentMac = localStorage.getItem('lastSelectedMac') || '';
-        let devices = [];
-        let img = new Image();
-        let activeDish = 'gallery';
-        let currentTab = localStorage.getItem('lastSelectedTab') || 'gallery';
-        
-        const dom = {
-            select: document.getElementById('deviceSelect'),
-            view: document.getElementById('deviceView'),
-            name: document.getElementById('deviceName'),
-            meta: document.getElementById('deviceMeta'),
-            gallery: document.getElementById('gallery'),
-            refresh: document.getElementById('refreshRate'),
-            timezone: document.getElementById('deviceTimezone'),
-            deviceW: document.getElementById('deviceW'),
-            deviceH: document.getElementById('deviceH'),
-            upload: document.getElementById('upload'),
-            clip: document.getElementById('clip'),
-            cost: document.getElementById('cost'),
-            gamma: document.getElementById('gammaVal'),
-            gammaValValue: document.getElementById('gammaValValue'),
-            sharpen: document.getElementById('sharpenAmount'),
-            sharpenAmountValue: document.getElementById('sharpenAmountValue'),
-            stats: document.getElementById('stats'),
-            cOri: document.getElementById('cOriginal'),
-            cDit: document.getElementById('cDither'),
-            addBtn: document.getElementById('addBtn'),
-            aiOptimizeBtn: document.getElementById('aiOptimizeBtn'),
-            overlay: document.getElementById('overlay'),
-            overlayImg: document.getElementById('overlayImg'),
-            redditSub: document.getElementById('redditSub'),
-            redditShowTitle: document.getElementById('redditShowTitle'),
-            redditBitDepth: document.getElementById('redditBitDepth'),
-            redditGamma: document.getElementById('redditGammaSlider'),
-            redditGammaValue: document.getElementById('redditGammaValue'),
-            redditClip: document.getElementById('redditClip'),
-            redditCost: document.getElementById('redditCost'),
-            redditPreview: document.getElementById('redditPreview'),
-            fetchNowBtn: document.getElementById('fetchNowBtn'),
-            ditherStrength: document.getElementById('ditherStrength'),
-            ditherStrengthValue: document.getElementById('ditherStrengthValue'),
-            redditDitherStrength: document.getElementById('redditDitherStrength'),
-            redditDitherStrengthValue: document.getElementById('redditDitherStrengthValue'),
-            redditAutoOptimize: document.getElementById('redditAutoOptimize'),
-            redditSharpen: document.getElementById('redditSharpen'),
-            redditSharpenValue: document.getElementById('redditSharpenValue')
-        };
-
-        const gOri = dom.cOri.getContext('2d');
-        const gDit = dom.cDit.getContext('2d');
-
-        async function toggleAIAuto() {
-            // For Gallery, this is a "one-shot" optimization button.
-            if (!img.src) {
-                alert("Please select an image first.");
-                return;
-            }
-
-            const aiInfo = document.getElementById('aiInfo');
-            const originalBtnText = dom.aiOptimizeBtn.textContent;
-            try {
-                dom.aiOptimizeBtn.disabled = true;
-                dom.aiOptimizeBtn.textContent = "⌛ Analyzing...";
-                aiInfo.textContent = "AI is analyzing image...";
-                
-                // Create a small version of the image for AI analysis (resized to device size)
-                const tempCanvas = document.createElement('canvas');
-                const ctx = tempCanvas.getContext('2d');
-                const tw = parseInt(dom.deviceW.value) || 400;
-                const th = parseInt(dom.deviceH.value) || 300;
-                
-                // Crop resize to fill target size (same as process() logic)
-                const scale = Math.max(tw / img.width, th / img.height);
-                const nw = img.width * scale;
-                const nh = img.height * scale;
-                const ox = (tw - nw) / 2;
-                const oy = (th - nh) / 2;
-                
-                tempCanvas.width = tw;
-                tempCanvas.height = th;
-                ctx.drawImage(img, ox, oy, nw, nh);
-                
-                const blob = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/jpeg', 0.8));
-                const fd = new FormData();
-                fd.append('file', blob, 'analyze.jpg');
-                
-                const res = await fetch('/admin/analyze_style', { method: 'POST', body: fd });
-                const style = await res.json();
-                
-                if (style && !style.error) {
-                    console.log("AI Style Analysis:", style);
-                    // Apply parameters based on AI analysis logic (mirroring backend)
-                    let sh = 0.2;
-                    if (style.has_text_overlay || style.content_type === "text_heavy") sh = 1.0;
-                    else if (style.content_type === "comic_illustration") sh = 0.5;
-                    
-                    let dt = 1.0;
-                    if (style.gradient_complexity === "low") dt = 0.4;
-                    
-                    let gm = (style.content_type === "comic_illustration");
-
-                    // Update UI sliders to match AI choice
-                    dom.sharpen.value = sh;
-                    dom.ditherStrength.value = dt * 100;
-                    dom.gamma.value = gm ? 6 : 0; // 6=2.2, 0=1.0
-                    
-                    // Set dither mode to FS for BW if needed.
-                    setGalleryBitDepth('fs');
-                    
-                    // Update labels
-                    dom.sharpenAmountValue.textContent = dom.sharpen.value;
-                    dom.ditherStrengthValue.textContent = dom.ditherStrength.value;
-                    updateGammaLabel(dom.gamma.value, 'gammaValValue');
-                    
-                    const applied = `sh:${Math.round(sh*100)}% dt:${Math.round(dt*100)}% gm:${gm?'2.2':'1.0'}`;
-                    aiInfo.textContent = `${style.content_type} | ${applied}`;
-                    process();
-                } else {
-                    aiInfo.textContent = "AI Analysis failed: " + (style.error || "Unknown error");
-                }
-            } catch (e) {
-                console.error("AI Analysis failed:", e);
-                aiInfo.textContent = "AI Analysis failed.";
-            } finally {
-                dom.aiOptimizeBtn.disabled = false;
-                dom.aiOptimizeBtn.textContent = originalBtnText;
-            }
-        }
-
-        function toggleRedditAIAuto() {
-            const isAuto = dom.redditAutoOptimize.checked;
-            // Elements to disable: Gamma, Sharpen, Dither
-            const elements = [dom.redditGamma, dom.redditSharpen, dom.redditDitherStrength];
-            elements.forEach(el => {
-                if (!el) return;
-                el.disabled = isAuto;
-                // Find the closest .config-group to gray out the whole group
-                const group = el.closest('.config-group');
-                if (group) {
-                    group.style.opacity = isAuto ? '0.4' : '1';
-                    group.style.pointerEvents = isAuto ? 'none' : 'auto';
-                }
-            });
-            
-            // Also update the status box if it's auto
-            const statusBox = document.getElementById('redditStatus');
-            if (isAuto && statusBox) {
-                statusBox.innerHTML = '<span style="color: #6366f1;">✨ AI Auto Enabled</span>';
-            } else if (statusBox) {
-                statusBox.innerHTML = 'Ready';
-            }
-        }
-
-        function updateGammaLabel(value, labelId) {
-            const labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4];
-            const label = labels[parseInt(value)] || 1.0;
-            const el = document.getElementById(labelId);
-            if (el) el.textContent = label.toFixed(1);
-        }
-
-        function setGalleryBitDepth(val) {
-            document.querySelectorAll('#galleryBitDepthControl .segment-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.val === val);
-            });
-            // No hidden input needed if we just read the active button
-            process();
-        }
-
-        function setRedditBitDepth(val) {
-            document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.val === val);
-            });
-            
-            // Apply defaults based on selection
-            if (val === "2") {
-                dom.redditGamma.value = 6; // 2.2
-                updateGammaLabel(6, 'redditGammaValue');
-                dom.redditClip.value = 20;
-                dom.redditCost.value = 6;
-                dom.redditSharpen.value = 0.2;
-            } else {
-                dom.redditGamma.value = 0; // 1.0
-                updateGammaLabel(0, 'redditGammaValue');
-                dom.redditClip.value = 22;
-                dom.redditCost.value = 6;
-                dom.redditSharpen.value = 0;
-            }
-            
-            // Update labels
-            if (dom.redditClipValue) dom.redditClipValue.textContent = dom.redditClip.value;
-            if (dom.redditCostValue) dom.redditCostValue.textContent = dom.redditCost.value;
-            if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = dom.redditSharpen.value;
-        }
-
-        async function init() {
-            await fetchDevices();
-            
-            // Initial placeholders
-            process();
-
-            dom.select.addEventListener('change', (e) => {
-                currentMac = e.target.value;
-                localStorage.setItem('lastSelectedMac', currentMac);
-                updateUI();
-            });
-
-            [dom.refresh, dom.deviceW, dom.deviceH].forEach(i => {
-                i.addEventListener('change', async () => {
-                    const w = parseInt(dom.deviceW.value);
-                    const h = parseInt(dom.deviceH.value);
-                    const r = parseInt(dom.refresh.value);
-                    const d = devices.find(x => x.mac_address === currentMac);
-                    if (d) {
-                        d.refresh_rate = r;
-                        d.display_width = w;
-                        d.display_height = h;
-                    }
-                    saveSettings({refresh_rate: r, display_width: w, display_height: h});
-                    process(); // Refresh gallery preview if size changed
-                });
-            });
-
-            dom.timezone.addEventListener('change', async () => {
-                const val = dom.timezone.value;
-                const d = devices.find(x => x.mac_address === currentMac);
-                if (d) d.timezone = val;
-                updateUI(); // Refresh UI to show time in new TZ
-                saveSettings({timezone: val}).then(() => {
-                    // Refresh devices to get updated server-calculated time
-                    fetchDevices();
-                });
-            });
-
-            [dom.clip, dom.cost, dom.gamma, dom.sharpen, dom.ditherStrength, dom.redditClip, dom.redditCost, dom.redditSharpen, dom.redditDitherStrength].forEach(i => {
-                i.addEventListener('input', () => {
-                    let displayVal = i.value;
-                    const valEl = document.getElementById(i.id+'Value');
-                    
-                    if (i.id === 'gammaVal' || i.id === 'redditGammaSlider') {
-                        updateGammaLabel(displayVal, i.id === 'gammaVal' ? 'gammaValValue' : 'redditGammaValue');
-                    } else if (valEl) {
-                        valEl.textContent = displayVal;
-                    }
-                    
-                    if (!i.id.startsWith('reddit')) process();
-                });
-            });
-
-            dom.upload.addEventListener('change', e => {
-                const f = e.target.files[0];
-                if (!f) return;
-                console.log("File selected:", f.name, f.size);
-                const r = new FileReader();
-                r.onload = ev => {
-                    img.onload = () => { 
-                        console.log("Image loaded, dimensions:", img.width, img.height);
-                        process(); 
-                    };
-                    img.onerror = (err) => {
-                        if (!img.src || img.src.includes('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==')) return; // Ignore empty or transparent pixel
-                        if (img.src.endsWith('/')) return; // Ignore empty src
-                        console.error("Image load error:", err);
-                        alert("Failed to load image.");
-                    };
-                    img.src = ev.target.result;
-                };
-                r.readAsDataURL(f);
-            });
-
-            dom.redditSub.addEventListener('change', () => {
-                const sub = dom.redditSub.value;
-                const insideSubs = ['memes', 'dankmemes', 'AdviceAnimals', 'wholesomememes', 'PrequelMemes', 'HistoryMemes', 'trippinthroughtime', 'me_irl', 'Antimeme', 'StarterPacks'];
-                
-                if (insideSubs.includes(sub)) {
-                    dom.redditShowTitle.checked = false;
-                } else {
-                    dom.redditShowTitle.checked = true;
-                }
-            });
-
-            dom.redditAutoOptimize.addEventListener('change', toggleRedditAIAuto);
-
-            dom.addBtn.addEventListener('click', upload);
-        }
-
-        async function saveSettings(settings) {
-            if (!currentMac) return;
-            await fetch(`/admin/device/${currentMac}/settings`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(settings)
-            });
-        }
-
-        async function setActiveDish(dish) {
-            activeDish = dish;
-            const d = devices.find(x => x.mac_address === currentMac);
-            if (d) d.active_dish = dish;
-            
-            // Update Active Dish Selection Indicator ONLY
-            document.querySelectorAll('.dish-btn').forEach(btn => {
-                btn.classList.toggle('active-dish', btn.dataset.dish === activeDish);
-            });
-
-            await saveSettings({active_dish: dish});
-        }
-
-        function showTab(tab) {
-            currentTab = tab;
-            localStorage.setItem('lastSelectedTab', tab);
-            
-            // Update Tabs Indicator
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === currentTab);
-            });
-
-            // Show relevant panel based on TAB
-            document.querySelectorAll('.tab-content').forEach(panel => {
-                panel.classList.toggle('hidden', panel.id !== `panel-${currentTab}`);
-            });
-            
-            if (currentTab === 'reddit') loadRedditPreview();
-        }
-
-        async function fetchRedditNow() {
-            dom.fetchNowBtn.disabled = true;
-            dom.fetchNowBtn.textContent = '⏳ Saving & Fetching...';
-            const statusBox = document.getElementById('redditStatus');
-            const originalStatus = statusBox.innerHTML;
-            
-            try {
-                // 1. Save Config first, but DON'T refresh preview yet
-                await saveRedditConfig(false, false);
-                
-                // 2. Trigger fetch
-                const res = await fetch(`/admin/reddit/fetch_now/${currentMac}`, { 
-                    method: 'POST'
-                });
-                
-                if (res.ok) {
-                    statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetch triggered...</span>`;
-                    
-                    // Poll for progress
-                    const pollInterval = setInterval(async () => {
-                        try {
-                            const res2 = await fetch(`/admin/reddit/preview/${currentMac}`);
-                            const data = await res2.json();
-                            
-                            if (data.status === 'fetching') {
-                                statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Processing...'}</span>`;
-                            } else {
-                                clearInterval(pollInterval);
-                                dom.fetchNowBtn.disabled = false;
-                                dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
-                                statusBox.innerHTML = '<span style="color: #10b981;">✅ Fetch Complete!</span>';
-                                
-                                // ONLY NOW refresh the preview images
-                                await loadRedditPreview();
-                                
-                                setTimeout(() => { 
-                                    if (dom.redditAutoOptimize.checked) toggleRedditAIAuto();
-                                    else statusBox.innerHTML = 'Ready';
-                                }, 5000);
-                            }
-                        } catch (e) { console.error("Poll error:", e); }
-                    }, 2000);
-                } else {
-                    statusBox.innerHTML = '<span style="color: #ef4444;">❌ Failed to trigger fetch.</span>';
-                    dom.fetchNowBtn.disabled = false;
-                    dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
-                    setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
-                }
-            } catch (e) {
-                statusBox.innerHTML = `<span style="color: #ef4444;">❌ Error: ${e}</span>`;
-                dom.fetchNowBtn.disabled = false;
-                dom.fetchNowBtn.textContent = '⚡ Save Config and Fetch Now';
-                setTimeout(() => { statusBox.innerHTML = originalStatus; }, 5000);
-            }
-        }
-
-        async function saveRedditConfig(showAlert = true, refreshPreview = true) {
-            const bitDepthBtn = document.querySelector('#redditBitDepthControl .segment-btn.active');
-            const gammaSliderVal = parseInt(dom.redditGamma.value) || 0;
-            const gammaLabels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4];
-            const config = {
-                subreddit: dom.redditSub.value || 'memes',
-                show_titles: dom.redditShowTitle.checked,
-                bit_depth: bitDepthBtn ? parseInt(bitDepthBtn.dataset.val) : 1,
-                dither_strength: parseInt(dom.redditDitherStrength.value) / 100,
-                apply_gamma: gammaLabels[gammaSliderVal],
-                sharpen_amount: parseFloat(dom.redditSharpen.value) || 0,
-                clip_pct: parseInt(dom.redditClip.value) || 22,
-                cost_pct: parseInt(dom.redditCost.value) || 6,
-                auto_optimize: dom.redditAutoOptimize.checked
-            };
-            const d = devices.find(x => x.mac_address === currentMac);
-            if (d) d.reddit_config = config;
-            await saveSettings({reddit_config: config});
-            if (refreshPreview) await loadRedditPreview();
-            if (showAlert) alert('Reddit config saved!');
-        }
-
-        async function loadRedditPreview() {
-            if (!currentMac) return;
-            const sub = dom.redditSub.value;
-            if (!sub) {
-                dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No subreddit selected. Please choose a subreddit and Save.</div>';
-                return;
-            }
-
-            try {
-                const res = await fetch(`/admin/reddit/preview/${currentMac}`);
-                const data = await res.json();
-                
-                // Update status info
-                if (data.last_update_formatted) {
-                    document.getElementById('lastFetchTime').textContent = data.last_update_formatted;
-                }
-                if (data.rate_hours) {
-                    document.getElementById('fetchRate').textContent = data.rate_hours;
-                }
-
-                if (data.posts && data.posts.length > 0) {
-                    dom.redditPreview.innerHTML = data.posts.map(post => {
-                        const filename = post.filename || post.bmp_filename;
-                        const labels = post.ai_labels;
-                        let debugHtml = '';
-                        if (labels) {
-                            const lStr = `${labels.content_type}, text: ${labels.has_text_overlay}, grad: ${labels.gradient_complexity}`;
-                            let appliedStr = 'No AI settings applied';
-                            if (labels.applied) {
-                                appliedStr = `sh:${labels.applied.sharpen} dt:${labels.applied.dither} gm:${labels.applied.gamma}`;
-                            }
-                            debugHtml = `
-                                <div class="post-debug" style="font-size: 10px; color: var(--text-dim); margin-top: 4px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 3px;">
-                                    <div>AI: ${lStr}</div>
-                                    <div style="color: var(--primary); font-weight: bold;">${appliedStr}</div>
-                                </div>`;
-                        }
-                        return `
-                            <div class="reddit-post">
-                                <img src="/api/bitmap/${Date.now()}/${filename}" 
-                                     alt="${post.title || ''}" 
-                                     onclick="showFull('/api/bitmap/${Date.now()}/${filename}')">
-                                <div class="post-title">${post.title || 'Reddit Post'}</div>
-                                ${debugHtml}
-                            </div>
-                        `;
-                    }).join('');
-                } else {
-                    dom.redditPreview.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-dim);">No processed images yet. Click Fetch and wait a few seconds.</div>';
-                }
-
-                // If fetching, update status box and poll
-                if (data.status === 'fetching') {
-                    const statusBox = document.getElementById('redditStatus');
-                    if (statusBox) {
-                        statusBox.innerHTML = `<span style="color: #fbbf24;">⏳ Fetching: ${data.progress || 'Starting...'}</span>`;
-                    }
-                    // Poll again in 2 seconds
-                    setTimeout(loadRedditPreview, 2000);
-                } else {
-                    const statusBox = document.getElementById('redditStatus');
-                    if (statusBox) {
-                        statusBox.innerHTML = `<span style="color: #10b981;">✅ Idle</span>`;
-                    }
-                }
-            } catch (e) {
-                console.log('Reddit preview load skipped or failed:', e);
-            }
-        }
-
-
-
-        async function fetchDevices() {
-            const res = await fetch('/admin/devices');
-            devices = await res.json();
-            dom.select.innerHTML = '<option value="">-- Select Device --</option>';
-            devices.forEach(d => {
-                const opt = document.createElement('option');
-                opt.value = d.mac_address;
-                opt.textContent = `${d.friendly_id} (${d.mac_address})`;
-                dom.select.appendChild(opt);
-            });
-            
-            if (currentMac) {
-                dom.select.value = currentMac;
-                if (!dom.select.value && devices.length > 0) {
-                    currentMac = devices[0].mac_address;
-                    dom.select.value = currentMac;
-                }
-            } else if (devices.length > 0) {
-                currentMac = devices[0].mac_address;
-                dom.select.value = currentMac;
-            }
-            updateUI();
-        }
-
-        function updateUI() {
-            if (!currentMac) return;
-            const d = devices.find(x => x.mac_address === currentMac);
-            if (!d) { dom.view.classList.add('hidden'); return; }
-            
-            dom.view.classList.remove('hidden');
-            dom.name.textContent = `${d.friendly_id} (${d.mac_address})`;
-            dom.refresh.value = d.refresh_rate || 60;
-            dom.deviceW.value = d.display_width || 400;
-            dom.deviceH.value = d.display_height || 300;
-            dom.timezone.value = d.timezone || 'UTC';
-            activeDish = d.active_dish || 'gallery';
-
-            let lastSeen = 'Never';
-            if (d.last_update_time) {
-                // Ensure the ISO string is treated as UTC by appending 'Z' if not present
-                const timeStr = d.last_update_time.endsWith('Z') ? d.last_update_time : d.last_update_time + 'Z';
-                const date = new Date(timeStr);
-                lastSeen = new Intl.DateTimeFormat('en-GB', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false,
-                    timeZone: d.timezone || 'UTC'
-                }).format(date).replace(/\//g, '-').replace(',', '');
-            }
-
-            dom.meta.innerHTML = `
-                <span>🔋 ${d.battery_voltage || '?'}V</span>
-                <span>📶 ${d.rssi || '?'} dBm</span>
-                <span title="Current local time of the device based on its timezone">⏰ Local Time: ${d.device_time || 'Unknown'}</span>
-                <span title="Last time the device successfully requested an image">🕒 Last Image Fetch: ${lastSeen}</span>
-            `;
-            
-            // Gallery thumbnails are now only in the Gallery panel
-            dom.gallery.innerHTML = d.images.map(i => `
-                <div class="image-item" onclick="showFull('/api/bitmap/${Date.now()}/${i.filename}')">
-                    <img src="/api/bitmap/${Date.now()}/${i.filename}">
-                    <button class="delete-btn" onclick="event.stopPropagation(); deleteImg(${i.id})">×</button>
-                </div>
-            `).join('');
-
-            // Update Active Dish Selection Indicator
-            document.querySelectorAll('.dish-btn').forEach(btn => {
-                btn.classList.toggle('active-dish', btn.dataset.dish === activeDish);
-            });
-
-            // Ensure the correct tab is shown
-            showTab(currentTab);
-
-            // Update Reddit Config inputs
-            if (d.reddit_config) {
-                console.log("Updating Reddit Config UI for", currentMac, d.reddit_config);
-                dom.redditSub.value = d.reddit_config.subreddit || '';
-                dom.redditShowTitle.checked = d.reddit_config.show_titles !== false;
-                
-                // Bit Depth Segmented Control
-                const rbd = d.reddit_config.bit_depth || 1;
-                document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.val == rbd);
-                });
-
-                // Gamma Slider Deserialization
-                const gammaLabels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4];
-                const savedGamma = d.reddit_config.apply_gamma;
-                let gammaIdx = 0;
-                if (typeof savedGamma === 'number') {
-                    gammaIdx = gammaLabels.findIndex(v => Math.abs(v - savedGamma) < 0.05);
-                    if (gammaIdx === -1) gammaIdx = 0;
-                } else if (savedGamma === true) {
-                    gammaIdx = 6; // 2.2
-                }
-                dom.redditGamma.value = gammaIdx;
-                updateGammaLabel(gammaIdx, 'redditGammaValue');
-
-                dom.redditSharpen.value = d.reddit_config.sharpen_amount || 0;
-                dom.redditClip.value = d.reddit_config.clip_pct || 22;
-                dom.redditCost.value = d.reddit_config.cost_pct || 6;
-                dom.redditDitherStrength.value = (d.reddit_config.dither_strength !== undefined) ? d.reddit_config.dither_strength * 100 : 100;
-                dom.redditAutoOptimize.checked = d.reddit_config.auto_optimize === true;
-                toggleRedditAIAuto();
-                
-                if (dom.redditClipValue) dom.redditClipValue.textContent = dom.redditClip.value;
-                if (dom.redditCostValue) dom.redditCostValue.textContent = dom.redditCost.value;
-                if (dom.redditDitherStrengthValue) dom.redditDitherStrengthValue.textContent = dom.redditDitherStrength.value;
-                if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = dom.redditSharpen.value;
-            } else {
-                // Default values if no config
-                dom.redditSub.value = '';
-                dom.redditShowTitle.checked = true;
-                
-                document.querySelectorAll('#redditBitDepthControl .segment-btn').forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.val == "1");
-                });
-
-                dom.redditGamma.value = 0;
-                updateGammaLabel(0, 'redditGammaValue');
-                dom.redditSharpen.value = 0;
-                dom.redditClip.value = 22;
-                dom.redditCost.value = 6;
-                dom.redditDitherStrength.value = 100;
-                if (dom.redditClipValue) dom.redditClipValue.textContent = "22";
-                if (dom.redditCostValue) dom.redditCostValue.textContent = "6";
-                if (dom.redditDitherStrengthValue) dom.redditDitherStrengthValue.textContent = "100";
-                if (dom.redditSharpenValue) dom.redditSharpenValue.textContent = "0.0";
-            }
-        }
-
-        function showFull(url) {
-            dom.overlayImg.src = url;
-            dom.overlay.style.display = 'flex';
-        }
-
-        async function deleteImg(id) {
-            if (confirm('Delete?')) {
-                await fetch(`/admin/image/${id}`, {method: 'DELETE'});
-                await fetchDevices();
-            }
-        }
-
-        function process() {
-            if (!img.src || !img.complete || img.naturalWidth === 0) return;
-            try {
-                const tw = parseInt(dom.deviceW.value) || 400;
-                const th = parseInt(dom.deviceH.value) || 300;
-                const clip = parseInt(dom.clip.value);
-                const cost = parseInt(dom.cost.value);
-
-                // 1. Resize/Crop logic (Crop resize to fill target size)
-                dom.cOri.width = tw;
-                dom.cOri.height = th;
-                dom.cDit.width = tw;
-                dom.cDit.height = th;
-
-                const scale = Math.max(tw / img.width, th / img.height);
-                const nw = img.width * scale;
-                const nh = img.height * scale;
-                const ox = (tw - nw) / 2;
-                const oy = (th - nh) / 2;
-
-                gOri.drawImage(img, ox, oy, nw, nh);
-
-                // 2. Grayscale & Sharpening & Gamma normalization
-                const imageData = gOri.getImageData(0, 0, tw, th);
-                const data = imageData.data;
-                
-                // First pass: Grayscale
-                for (let i = 0; i < data.length; i += 4) {
-                    const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-                    data[i] = data[i+1] = data[i+2] = g;
-                    data[i+3] = 255;
-                }
-
-            // Sharpening (Simple 3x3 Laplacian)
-            const shAmount = parseFloat(dom.sharpen.value) || 0;
-            if (shAmount > 0) {
-                const copy = new Uint8ClampedArray(data);
-                for (let y = 1; y < th - 1; y++) {
-                    for (let x = 1; x < tw - 1; x++) {
-                        const i = (y * tw + x) * 4;
-                        const center = copy[i];
-                        const up = copy[((y - 1) * tw + x) * 4];
-                        const down = copy[((y + 1) * tw + x) * 4];
-                        const left = copy[(y * tw + (x - 1)) * 4];
-                        const right = copy[(y * tw + (x + 1)) * 4];
-                        const sharpened = center + (center * 4 - up - down - left - right) * shAmount;
-                        data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, sharpened));
-                    }
-                }
-            }
-
-            // Gamma Correction
-            const gammaSliderVal = parseInt(dom.gamma.value) || 0;
-            const gammaLabels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4];
-            const gammaVal = gammaLabels[gammaSliderVal];
-            
-            if (gammaVal !== 1.0) {
-                for (let i = 0; i < data.length; i += 4) {
-                    const g = 255 * Math.pow(data[i] / 255, 1 / gammaVal);
-                    data[i] = data[i+1] = data[i+2] = g;
-                }
-            }
-
-            // 3. Weighted Approaching Auto-Contrast (W-Approaching)
-            const hist = new Array(256).fill(0);
-            let sumValues = 0;
-            const total = tw * th;
-
-            for (let i = 0; i < data.length; i += 4) {
-                const v = data[i] | 0;
-                hist[v]++;
-                sumValues += v;
-            }
-
-            const avg = sumValues / (total || 1);
-            let totalPotentialDamage = 0;
-            for (let i = 0; i < 256; i++) {
-                totalPotentialDamage += hist[i] * Math.abs(i - avg);
-            }
-
-            const targetArea = total * (clip / 100);
-            const targetCost = totalPotentialDamage * (cost / 100);
-            const minTarget = total * 0.005; // 0.5% safety clip
-
-            let remBlack = total, remWhite = total;
-            let left = 0, right = 255;
-            let clippedBlack = 0, clippedWhite = 0, clippedTotal = 0, totalCost = 0;
-
-            while (left < right && totalCost < targetCost && clippedTotal < targetArea) {
-                if (remWhite >= remBlack) {
-                    const count = hist[right];
-                    const costVal = count * (255 - right);
-                    totalCost += costVal;
-                    clippedTotal += count;
-                    remWhite -= count;
-                    clippedWhite += count;
-                    right--;
-                } else {
-                    const count = hist[left];
-                    const costVal = count * left;
-                    totalCost += costVal;
-                    clippedTotal += count;
-                    remBlack -= count;
-                    clippedBlack += count;
-                    left++;
-                }
-            }
-            // Safety
-            while (left < right && clippedBlack < minTarget) { clippedBlack += hist[left]; left++; }
-            while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
-
-            const acScale = 255 / (right - left || 1);
-            for (let i = 0; i < data.length; i += 4) {
-                let v = data[i];
-                if (v <= left) v = 0;
-                else if (v >= right) v = 255;
-                else v = (v - left) * acScale;
-                data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, v));
-            }
-
-            // Update gOri to show the auto-contrasted grayscale image
-            gOri.putImageData(imageData, 0, 0);
-
-            // 4. Dithering (on a copy so we don't mess up the auto-contrast display)
-            const ditherData = new Uint8ClampedArray(data);
-            const bitDepthBtn = document.querySelector('#galleryBitDepthControl .segment-btn.active');
-            const dMode = bitDepthBtn ? bitDepthBtn.dataset.val : 'fs';
-            const strength = parseInt(dom.ditherStrength.value) / 100;
-
-            if (dMode === 'fs4g') {
-                for (let y = 0; y < th; y++) {
-                    const ltr = y % 2 === 0;
-                    for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
-                        const i = (y * tw + x) * 4;
-                        const old = ditherData[i];
-                        const nw_val = Math.round(old / 85) * 85;
-                        const err = (old - nw_val) * strength;
-                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
-                        const add = (nx, ny, f) => {
-                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-                                const j = (ny * tw + nx) * 4;
-                                const v = ditherData[j] + err * f;
-                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
-                            }
-                        };
-                        if (ltr) {
-                            add(x + 1, y,     7 / 16);
-                            add(x - 1, y + 1, 3 / 16);
-                            add(x,     y + 1, 5 / 16);
-                            add(x + 1, y + 1, 1 / 16);
-                        } else {
-                            add(x - 1, y,     7 / 16);
-                            add(x + 1, y + 1, 3 / 16);
-                            add(x,     y + 1, 5 / 16);
-                            add(x - 1, y + 1, 1 / 16);
-                        }
-                    }
-                }
-            } else {
-                // Floyd-Steinberg BW
-                for (let y = 0; y < th; y++) {
-                    const ltr = y % 2 === 0;
-                    for (let x = ltr ? 0 : tw - 1; ltr ? x < tw : x >= 0; ltr ? x++ : x--) {
-                        const i = (y * tw + x) * 4;
-                        const old = ditherData[i];
-                        const nw_val = old < 128 ? 0 : 255;
-                        const err = (old - nw_val) * strength;
-                        ditherData[i] = ditherData[i+1] = ditherData[i+2] = nw_val;
-                        const add = (nx, ny, f) => {
-                            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-                                const j = (ny * tw + nx) * 4;
-                                const v = ditherData[j] + err * f;
-                                ditherData[j] = ditherData[j+1] = ditherData[j+2] = Math.max(0, Math.min(255, v));
-                            }
-                        };
-                        if (ltr) {
-                            add(x + 1, y,     7 / 16);
-                            add(x - 1, y + 1, 3 / 16);
-                            add(x,     y + 1, 5 / 16);
-                            add(x + 1, y + 1, 1 / 16);
-                        } else {
-                            add(x - 1, y,     7 / 16);
-                            add(x + 1, y + 1, 3 / 16);
-                            add(x,     y + 1, 5 / 16);
-                            add(x - 1, y + 1, 1 / 16);
-                        }
-                    }
-                }
-            }
-
-            gDit.putImageData(new ImageData(ditherData, tw, th), 0, 0);
-                dom.stats.textContent = `Original: ${img.width}x${img.height} | Processed: ${tw}x${th} | Range: [${left}, ${right}]`;
-            } catch (e) {
-                console.error("Process function error:", e);
-            }
-        }
-
-        function canvasToPNG(canvas, ditherMode) {
-            const width = canvas.width;
-            const height = canvas.height;
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
-            
-            const isBW = (ditherMode === 'fs');
-            const bitDepth = isBW ? 1 : 2;
-            
-            // 1. Prepare Palette and Indices
-            let palette, indices = new Uint8Array(width * height);
-            if (isBW) {
-                palette = [0, 0, 0, 255, 255, 255]; // Black, White
-                for (let i = 0; i < data.length; i += 4) {
-                    indices[i / 4] = data[i] < 128 ? 0 : 1;
-                }
-            } else {
-                palette = [0, 0, 0, 85, 85, 85, 170, 170, 170, 255, 255, 255]; // 4G levels
-                for (let i = 0; i < data.length; i += 4) {
-                    indices[i / 4] = Math.round(data[i] / 85);
-                }
-            }
-
-            // 2. Pack indices into rows with filter byte (0)
-            const bytesPerRow = Math.ceil((width * bitDepth) / 8);
-            const packedData = new Uint8Array(height * (1 + bytesPerRow));
-            
-            for (let y = 0; y < height; y++) {
-                const rowStart = y * (1 + bytesPerRow);
-                packedData[rowStart] = 0; // Filter Type 0 (None)
-                
-                for (let x = 0; x < width; x++) {
-                    const idx = indices[y * width + x];
-                    const bytePos = rowStart + 1 + Math.floor((x * bitDepth) / 8);
-                    if (bitDepth === 1) {
-                        const bitPos = 7 - (x % 8);
-                        packedData[bytePos] |= (idx << bitPos);
-                    } else {
-                        const bitPos = 6 - (x % 4) * 2;
-                        packedData[bytePos] |= (idx << bitPos);
-                    }
-                }
-            }
-
-            // 3. Helper functions for PNG construction
-            const crcTable = new Int32Array(256);
-            for (let n = 0; n < 256; n++) {
-                let c = n;
-                for (let k = 0; k < 8; k++) {
-                    c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-                }
-                crcTable[n] = c;
-            }
-
-            function crc32(buf) {
-                let crc = -1;
-                for (let i = 0; i < buf.length; i++) {
-                    crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
-                }
-                return crc ^ -1;
-            }
-
-            function makeChunk(type, data) {
-                const len = data.length;
-                const buf = new Uint8Array(12 + len);
-                const view = new DataView(buf.buffer);
-                view.setUint32(0, len);
-                buf.set(new TextEncoder().encode(type), 4);
-                buf.set(data, 8);
-                const crc = crc32(buf.slice(4, 8 + len));
-                view.setUint32(8 + len, crc);
-                return buf;
-            }
-
-            // 4. Build PNG
-            const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-            
-            const ihdrData = new Uint8Array(13);
-            const ihdrView = new DataView(ihdrData.buffer);
-            ihdrView.setUint32(0, width);
-            ihdrView.setUint32(4, height);
-            ihdrData[8] = bitDepth;
-            ihdrData[9] = 3; // Color Type 3: Indexed
-            ihdrData[10] = 0; // Compression: Deflate
-            ihdrData[11] = 0; // Filter: Adaptive
-            ihdrData[12] = 0; // Interlace: None
-            const ihdr = makeChunk('IHDR', ihdrData);
-
-            const plte = makeChunk('PLTE', new Uint8Array(palette));
-            
-            const compressed = pako.deflate(packedData, { level: 9 });
-            const idat = makeChunk('IDAT', compressed);
-            
-            const iend = makeChunk('IEND', new Uint8Array(0));
-
-            const totalLen = signature.length + ihdr.length + plte.length + idat.length + iend.length;
-            const finalBuf = new Uint8Array(totalLen);
-            let offset = 0;
-            [signature, ihdr, plte, idat, iend].forEach(c => {
-                finalBuf.set(c, offset);
-                offset += c.length;
-            });
-
-            return new Blob([finalBuf], { type: 'image/png' });
-        }
-
-        async function upload(e) {
-            if (e) e.preventDefault();
-            if (!img.src) { alert('Please select an image first'); return; }
-            dom.addBtn.disabled = true;
-            dom.addBtn.textContent = '...';
-            
-            const bitDepthBtn = document.querySelector('#galleryBitDepthControl .segment-btn.active');
-            const dMode = bitDepthBtn ? bitDepthBtn.dataset.val : 'fs';
-            const blob = canvasToPNG(dom.cDit, dMode);
-            
-            const fd = new FormData();
-            fd.append('file', blob, 'processed.png');
-            try {
-                const res = await fetch(`/admin/upload/${currentMac}`, { method: 'POST', body: fd });
-                if (res.ok) { 
-                    dom.upload.value = ''; 
-                    img.src = ''; // Clear image source instead of reassigning object
-                    process(); // Reset preview
-                    await fetchDevices(); 
-                }
-            } catch (e) { alert('Failed'); }
-            finally { dom.addBtn.disabled = false; dom.addBtn.textContent = 'Add to Gallery'; }
-        }
-
-        init();
-    </script>
 </body>
 </html>
