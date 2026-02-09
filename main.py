@@ -371,27 +371,25 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
                             try:
+                                # Step 5: AI analysis and Strategy
+                                print(f"      AI: Calling for style analysis...")
+                                
+                                ai_prompt = config.get("ai_prompt")
+                                ai_analysis = await reddit_ai.get_ai_analysis(img_url, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
+                                print(f"      AI Response: {ai_analysis}")
+                                
+                                if ai_analysis.get("decision") == "skip":
+                                    print(f"      AI DECISION: SKIP - This post does not meet criteria.")
+                                    continue
+                                    
+                                strategy = await reddit_ai.get_process_strategy(ai_analysis)
+                                
+                                # Download only if AI says 'use'
                                 print(f"      Downloading: {img_url}")
                                 img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                                 if not img_ori:
                                     print(f"      SKIP: Download failed.")
                                     continue
-                                
-                                # Step 3: Check ratio fit
-                                if not image_processor.check_ratio_fit(img_ori, target_size=(width, height)):
-                                    print(f"      SKIP: Ratio misfit (Target {width}x{height}, Image {img_ori.width}x{img_ori.height})")
-                                    continue
-                                
-                                # Step 5: AI analysis and Strategy
-                                print(f"      AI: Calling for style analysis...")
-                                img_for_ai = img_ori.copy()
-                                img_for_ai.thumbnail((512, 512), Image.Resampling.LANCZOS)
-                                
-                                ai_prompt = config.get("ai_prompt")
-                                ai_analysis = await reddit_ai.get_ai_analysis(img_for_ai, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
-                                print(f"      AI Response: {ai_analysis}")
-                                
-                                strategy = await reddit_ai.get_process_strategy(ai_analysis)
                                 
                                 # Apply AI strategy if auto_optimize is ON, otherwise use manual settings
                                 if auto_optimize:

@@ -11,6 +11,7 @@ from typing import Literal
 client = OpenAI()
 
 class ImageStyle(BaseModel):
+    decision: Literal["use", "skip"]
     content_type: Literal["photo", "comic_cartoon", "text_heavy", "memes", "UI", "charts", "outline", "line arts", "Others"]
     has_text_overlay: bool
     gradient_complexity: Literal["high", "low"]
@@ -20,6 +21,10 @@ class ImageStyle(BaseModel):
 DEFAULT_SYSTEM_PROMPT = """You are an e-paper image optimization expert. 
 Analyze the provided image and metadata (title, URL) to categorize its visual characteristics.
 This help choose the best dithering, sharpening, and resizing parameters for an e-paper display.
+
+Decision Guidelines:
+- 'use': Image is high quality, relevant, and suitable for e-paper (good contrast, clear subjects).
+- 'skip': Image is low quality, blurry, contains too much fine detail that won't dither well, or is irrelevant/spam.
 
 Guidelines for content_type:
 - 'photo': Real-world photography.
@@ -39,15 +44,16 @@ Guidelines for other fields:
 - resize_method: 'crop' to fill the screen (best for photos), 'padding' to show the whole image with borders (best for art/comics), 'stretch' to fill without cropping (rarely used).
 """
 
-def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageStyle:
+def analyze_image(image_url, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageStyle:
     """
-    Analyzes a PIL image using OpenAI Vision and returns a structured style object.
+    Analyzes an image URL using OpenAI Vision and returns a structured style object.
     """
     system_prompt = custom_prompt if custom_prompt else DEFAULT_SYSTEM_PROMPT
     
     if not os.getenv("OPENAI_API_KEY"):
         # Fallback if no API key is provided
         return ImageStyle(
+            decision="use",
             content_type="Others",
             has_text_overlay=False,
             gradient_complexity="high",
@@ -55,27 +61,20 @@ def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400,
             resize_method="crop"
         )
 
-    # Resize to 512x512 as planned for the vision request (or smaller)
-    vision_img = image_pil.copy()
-    vision_img.thumbnail((512, 512))
-    
-    buffered = BytesIO()
-    vision_img.save(buffered, format="JPEG", quality=85)
-    base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
-
     user_content = [
         {"type": "input_text", "text": f"Analyze this image for e-paper optimization.\nPost Title: {post_title}\nPost URL: {post_url}\nTarget Resolution: {target_resolution[0]}x{target_resolution[1]}"},
         {
             "type": "input_image",
             "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}"
+                "url": image_url,
+                "detail": "low"
             },
         },
     ]
 
     try:
         response = client.responses.parse(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             instructions=system_prompt,
             input=[
                 {
@@ -90,6 +89,7 @@ def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400,
         print(f"Error calling AI Stylist: {e}")
         # Fallback to safe defaults
         return ImageStyle(
+            decision="use",
             content_type="Others",
             has_text_overlay=False,
             gradient_complexity="high",

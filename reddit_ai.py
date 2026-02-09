@@ -1,12 +1,12 @@
 import ai_stylist
 
-async def get_ai_analysis(img_for_ai, post_url, post_title, target_resolution, ai_prompt=None):
+async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_prompt=None):
     """
     AI Interface: Analyzes image and post metadata using real AI.
     """
     # Use the real AI analysis from ai_stylist
     style_obj = ai_stylist.analyze_image(
-        img_for_ai, 
+        img_url, 
         post_title=post_title, 
         post_url=post_url, 
         target_resolution=target_resolution,
@@ -14,6 +14,7 @@ async def get_ai_analysis(img_for_ai, post_url, post_title, target_resolution, a
     )
     
     return {
+        "decision": style_obj.decision,
         "content_type": style_obj.content_type,
         "has_text_overlay": style_obj.has_text_overlay,
         "gradient_complexity": style_obj.gradient_complexity,
