@@ -183,9 +183,6 @@ const ImageProcess = {
         this.gammaCorrection(data, gamma);
         const { left, right } = this.autoContrast(data, width, height, clipPct, costPct);
 
-        // Update gOri to show the grayscale/contrasted version
-        gOri.putImageData(imageData, 0, 0);
-
         // 3. Dither on a copy
         const ditherImageData = new ImageData(new Uint8ClampedArray(data), width, height);
         const levels = bitDepth === 'fs4g' ? 4 : 2;

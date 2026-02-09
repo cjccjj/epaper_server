@@ -191,9 +191,8 @@ document.addEventListener('alpine:init', () => {
                 sharpen: parseFloat(this.galleryConfig.sharpen || 0),
                 ditherStrength: parseInt(this.galleryConfig.ditherStrength || 0) / 100
             };
-
+ 
             const result = ImageProcess.process(this.img, canvases, options);
-            this.stats = `Range: ${result.left} - ${result.right}`;
         },
 
         async aiOptimize() {
