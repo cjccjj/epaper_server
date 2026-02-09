@@ -89,24 +89,11 @@ database.init_db()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
-    if not scheduler.running:
-        scheduler.start()
-    
-    # Check for devices that need Reddit updates
-    db = database.SessionLocal()
-    try:
-        devices = db.query(database.Device).all()
-        for device in devices:
-            if device.active_dish == "reddit":
-                # Trigger initial refresh in background
-                asyncio.create_task(refresh_device_reddit_cache(device.mac_address))
-    finally:
-        db.close()
+    # (Scheduled updates disabled as per user request)
     
     yield
     
     # Shutdown logic
-    scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -277,9 +264,10 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         cache["status"] = "fetching"
         cache["progress"] = "Starting..."
         save_device_reddit_cache(mac, cache)
-
-        existing_posts = {p["id"]: p for p in cache.get("posts", []) if isinstance(p, dict) and "id" in p}
-        print(f"  Cache: Found {len(existing_posts)} existing posts to potentially reuse.")
+        
+        # In a manual fetch, we ignore existing cache to force re-analysis/overwrite
+        print(f"  Manual fetch: Ignoring existing cache to force refresh.")
+        existing_posts = {}
         
         # Filename counter per device
         clean_mac = mac.replace(":", "").lower()
@@ -613,29 +601,18 @@ def get_display(
     if device.active_dish == "gallery":
         images = sorted(device.images, key=lambda x: x.order)
         if images:
-            # Use a modulo to ensure index is within range if list shrunk
             idx = device.current_image_index % len(images)
             current_img = images[idx]
             filename = current_img.filename
-            
-            # Increment for next time
             device.current_image_index = (idx + 1) % len(images)
     elif device.active_dish == "reddit":
-        # Load per-device Reddit cache
         cache = load_device_reddit_cache(id)
         posts = cache.get("posts", [])
-        
         if posts:
-            # Simple rotation or pick based on time
-            # For now, just use the current_image_index to cycle through reddit posts
             idx = device.current_image_index % len(posts)
             filename = posts[idx].get("filename", "placeholder.png")
-            
-            # Increment index for next time
             device.current_image_index = (device.current_image_index + 1) % len(posts)
         else:
-            # If cache is empty, trigger a background refresh and show placeholder
-            asyncio.create_task(refresh_device_reddit_cache(id))
             filename = "placeholder.png"
     
     # Update contact time only after successful image selection
@@ -824,6 +801,23 @@ def delete_image(image_id: int, db: Session = Depends(get_db)):
             os.remove(path)
         db.delete(img)
         db.commit()
+    return {"status": "success"}
+
+@app.delete("/admin/reddit/cache/{mac}")
+def clear_reddit_cache(mac: str):
+    """Clear Reddit cache and delete associated images."""
+    cache = load_device_reddit_cache(mac)
+    for post in cache.get("posts", []):
+        if post.get("filename"):
+            path = os.path.join(BITMAP_DIR, post["filename"])
+            if os.path.exists(path):
+                os.remove(path)
+    
+    # Reset cache file
+    path = get_device_cache_path(mac)
+    if os.path.exists(path):
+        os.remove(path)
+        
     return {"status": "success"}
 
 if __name__ == "__main__":

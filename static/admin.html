@@ -338,9 +338,12 @@
 
                 <div class="reddit-status-row">
                     <div id="redditStatus" x-html="redditStatus">Ready</div>
-                    <template x-if="redditConfig.auto_optimize">
-                        <div style="color: #6366f1;">✨ AI Auto Enabled</div>
-                    </template>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-outline" @click="clearRedditCache()" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">🗑️ Clear Cache</button>
+                        <template x-if="redditConfig.auto_optimize">
+                            <div style="color: #6366f1; font-size: 11px; align-self: center;">✨ AI Auto Enabled</div>
+                        </template>
+                    </div>
                 </div>
 
                 <div class="config-row">

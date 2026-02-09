@@ -412,6 +412,22 @@ document.addEventListener('alpine:init', () => {
                     this.redditConfig.sharpen_amount = 0;
                 }
             }
+        },
+
+        async clearRedditCache() {
+            if (!this.currentMac) return;
+            if (!confirm("Are you sure you want to clear the Reddit cache and delete all processed images?")) return;
+            
+            try {
+                const res = await fetch(`/admin/reddit/cache/${this.currentMac}`, { method: 'DELETE' });
+                if (res.ok) {
+                    this.redditPreview = [];
+                    this.redditStatus = '<span style="color: #10b981;">🗑️ Cache Cleared</span>';
+                    setTimeout(() => { this.redditStatus = 'Ready'; }, 3000);
+                }
+            } catch (e) {
+                console.error("Clear reddit cache error:", e);
+            }
         }
     }));
 });
