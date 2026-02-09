@@ -74,18 +74,18 @@ def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400,
     ]
 
     try:
-        completion = client.beta.chat.completions.parse(
+        response = client.responses.parse(
             model="gpt-4o-mini",
-            messages=[
+            input=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": user_content,
                 }
             ],
-            response_format=ImageStyle,
+            text_format=ImageStyle,
         )
-        return completion.choices[0].message.parsed
+        return response.output_parsed
     except Exception as e:
         print(f"Error calling AI Stylist: {e}")
         # Fallback to safe defaults

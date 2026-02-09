@@ -246,17 +246,23 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         height = device.display_height or 300
         
         # Use config settings if available, otherwise fallback to defaults
-        clip_pct = int(config.get("clip_pct", 22 if bit_depth == 1 else 20))
-        cost_pct = int(config.get("cost_pct", 6))
-        apply_gamma = config.get("apply_gamma", bit_depth == 2)
-        dither_mode = config.get("dither_mode", 'fs4g' if bit_depth == 2 else 'fs')
+        clip_pct = int(config.get("clip_percent", 22 if bit_depth == 1 else 20))
+        cost_pct = int(config.get("cost_percent", 6))
+        
+        # Gamma handling: use gamma_index or fallback
+        gamma_labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+        gamma_index = int(config.get("gamma_index", 0 if bit_depth == 1 else 6))
+        if gamma_index < 0 or gamma_index >= len(gamma_labels):
+            gamma_index = 0
+        manual_gamma = gamma_labels[gamma_index]
+        
         dither_strength = float(config.get("dither_strength", 1.0))
         sharpen_amount = float(config.get("sharpen_amount", 0.0))
         auto_optimize = config.get("auto_optimize", False)
             
         print(f"\n[REDDIT FETCH] Starting for {mac}")
         print(f"  Config: r/{subreddit}, {bit_depth}-bit, {width}x{height}")
-        print(f"  Options: clip={clip_pct}%, cost={cost_pct}%, gamma={apply_gamma}, auto_opt={auto_optimize}")
+        print(f"  Options: clip={clip_pct}%, cost={cost_pct}%, gamma={manual_gamma}, auto_opt={auto_optimize}")
 
         # Mixed strategy: get Top/Day and Hot
         strategies = [
@@ -328,9 +334,11 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                         # Reuse existing if same config
                         if is_in_cache:
                             existing = existing_posts[post_id]
+                            # Reuse only if config matches AND we have AI labels (for fine-tuning)
                             if existing.get("bit_depth") == bit_depth and \
                                existing.get("width") == width and \
                                existing.get("height") == height and \
+                               existing.get("ai_labels") and \
                                os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])):
                                 
                                 print(f"      REUSE: Existing image found in cache.")
@@ -339,7 +347,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 strategy_posts_added += 1
                                 continue
                             else:
-                                print(f"      RE-PROCESS: Cache found but config changed ({existing.get('bit_depth')}nd vs {bit_depth}bd).")
+                                reason = "config changed" if existing.get("bit_depth") != bit_depth else "missing AI labels"
+                                print(f"      RE-PROCESS: Cache found but {reason}.")
 
                         # Process new image
                         content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
@@ -383,13 +392,21 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 print(f"      AI Response: {ai_analysis}")
                                 
                                 strategy = await reddit_ai.get_process_strategy(ai_analysis)
-                                print(f"      Strategy: {strategy}")
+                                
+                                # Apply AI strategy if auto_optimize is ON, otherwise use manual settings
+                                if auto_optimize:
+                                    print(f"      Strategy: Using AI decision.")
+                                else:
+                                    print(f"      Strategy: Overriding AI with MANUAL settings (gamma={manual_gamma}, sharpen={sharpen_amount}, dither={dither_strength}).")
+                                    strategy["gamma"] = manual_gamma
+                                    strategy["sharpen"] = sharpen_amount
+                                    strategy["dither_strength"] = dither_strength
                                 
                                 # Inject user preference into analysis for display/processing
                                 ai_analysis["show_titles"] = show_titles
                                 
                                 # Step 6 & 7: Process from img_ori
-                                print(f"      Image Processing: Applying pipeline...")
+                                print(f"      Image Processing: Applying pipeline (gamma={strategy['gamma']}, sharpen={strategy['sharpen']}, dither={strategy['dither_strength']})...")
                                 processed_img, debug_info = await asyncio.to_thread(
                                     image_processor.process_with_ai_strategy,
                                     img_ori,
