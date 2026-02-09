@@ -62,26 +62,20 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
     # Handle image input
     if isinstance(image_input, str):
         # It's a URL
-        image_data = {
-            "url": image_input,
-            "detail": "low"
-        }
+        image_url_str = image_input
     else:
         # It's a PIL Image, convert to base64
         buffered = BytesIO()
-        # Resize if very large to save tokens and speed up, but OpenAI handles it too
         image_input.save(buffered, format="JPEG", quality=85)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        image_data = {
-            "url": f"data:image/jpeg;base64,{base64_image}",
-            "detail": "low"
-        }
+        image_url_str = f"data:image/jpeg;base64,{base64_image}"
 
     user_content = [
         {"type": "input_text", "text": f"Analyze this image for e-paper optimization.\nPost Title: {post_title}\nPost URL: {post_url}\nTarget Resolution: {target_resolution[0]}x{target_resolution[1]}"},
         {
             "type": "input_image",
-            "image_url": image_data,
+            "image_url": image_url_str,
+            "detail": "low"
         },
     ]
 
