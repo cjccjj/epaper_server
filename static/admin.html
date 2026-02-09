@@ -96,9 +96,11 @@
         .reddit-post { background: var(--panel-light); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); width: 200px; cursor: pointer; transition: transform 0.2s; position: relative; }
         .reddit-post:hover { transform: translateY(-2px); border-color: var(--primary); }
         .reddit-post img { width: 100%; height: 150px; object-fit: cover; background: #000; }
-        .reddit-post .post-title { padding: 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-        .reddit-post .ai-debug { padding: 4px 6px; font-size: 9px; color: #818cf8; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; }
-        .reddit-post .process-debug { padding: 4px 6px; font-size: 9px; color: #10b981; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; }
+        .reddit-post .post-title { padding: 6px 6px 2px 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .reddit-post .post-url { padding: 0 6px 6px 6px; font-size: 9px; color: var(--primary); text-decoration: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; }
+        .reddit-post .post-url:hover { text-decoration: underline; }
+        .reddit-post .ai-debug { padding: 4px 6px; font-size: 9px; color: #818cf8; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; line-height: 1.2; }
+        .reddit-post .process-debug { padding: 4px 6px; font-size: 9px; color: #10b981; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; line-height: 1.2; }
 
         .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         .preview-box { display: flex; flex-direction: column; gap: 4px; }
@@ -395,12 +397,21 @@
                     <div class="reddit-post" @click="showOverlay('/api/bitmap/' + post.filename)">
                         <img :src="'/api/bitmap/' + post.filename">
                         <div class="post-title" x-text="post.title"></div>
+                        <a :href="post.url" target="_blank" class="post-url" @click.stop x-text="post.url"></a>
+                        
                         <!-- AI and Process Debug Info -->
                         <template x-if="post.ai_labels">
-                            <div class="ai-debug" x-text="'AI: ' + post.ai_labels.ai.style + ' | ' + post.ai_labels.ai.gradient + ' | ' + (post.ai_labels.ai.text_heavy ? 'Text+' : 'Text-')"></div>
+                            <div class="ai-debug">
+                                <div x-text="'Style: ' + post.ai_labels.ai.style"></div>
+                                <div x-text="'Grad: ' + post.ai_labels.ai.gradient + ' | Text: ' + (post.ai_labels.ai.text_heavy ? 'Heavy' : 'Light')"></div>
+                                <div x-text="'Overlay: ' + (post.ai_labels.ai.has_overlay_text ? 'Yes' : 'No')"></div>
+                            </div>
                         </template>
                         <template x-if="post.ai_labels">
-                            <div class="process-debug" x-text="'Proc: g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.process.dither_strength || 0) * 100) + '% ' + post.ai_labels.process.resize_method"></div>
+                            <div class="process-debug">
+                                <div x-text="'Proc: ' + post.ai_labels.process.resize_method"></div>
+                                <div x-text="'g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.process.dither_strength || 0) * 100) + '%'"></div>
+                            </div>
                         </template>
                     </div>
                 </template>
