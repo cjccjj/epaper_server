@@ -292,7 +292,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         else:
             filename_counter = 0
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers={"User-Agent": REDDIT_USER_AGENT}) as client:
             for strategy in strategies:
                 sort = strategy["sort"]
                 time = strategy["time"]

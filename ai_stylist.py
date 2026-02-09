@@ -64,9 +64,9 @@ def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400,
     base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
     user_content = [
-        {"type": "text", "text": f"Analyze this image for e-paper optimization.\nPost Title: {post_title}\nPost URL: {post_url}\nTarget Resolution: {target_resolution[0]}x{target_resolution[1]}"},
+        {"type": "input_text", "text": f"Analyze this image for e-paper optimization.\nPost Title: {post_title}\nPost URL: {post_url}\nTarget Resolution: {target_resolution[0]}x{target_resolution[1]}"},
         {
-            "type": "image_url",
+            "type": "input_image",
             "image_url": {
                 "url": f"data:image/jpeg;base64,{base64_image}"
             },
@@ -76,14 +76,14 @@ def analyze_image(image_pil, post_title="", post_url="", target_resolution=(400,
     try:
         response = client.responses.parse(
             model="gpt-4o-mini",
+            instructions=system_prompt,
             input=[
-                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": user_content,
                 }
             ],
-            text_format=ImageStyle,
+            response_format=ImageStyle,
         )
         return response.output_parsed
     except Exception as e:
