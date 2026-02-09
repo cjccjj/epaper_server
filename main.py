@@ -376,12 +376,27 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 
                                 final_decision = "skip" if ai_decision == "skip" or strategy_decision == "skip" else "use"
                                 
+                                # Format Readable AI Summary - Full 13 items
+                                ai_parts = [
+                                    f"[{ai_analysis.get('decision', 'USE').upper()}]",
+                                    f"Type:{ai_analysis.get('post_purpose', '?')}",
+                                    f"Layout:{ai_analysis.get('layout_complexity', '?')}",
+                                    f"Txt:{ai_analysis.get('text_density', '?')}",
+                                    f"Resz:{ai_analysis.get('resize_strategy', '?')}",
+                                    f"Strtch:{ai_analysis.get('stretch_tolerance', '?')}",
+                                    f"Crop:{ai_analysis.get('crop_safety', '?')}",
+                                    f"Pad:{ai_analysis.get('padding_color', '?')}",
+                                    f"Goal:{ai_analysis.get('primary_goal', '?')}",
+                                    f"Edge:{ai_analysis.get('edge_importance', '?')}",
+                                    f"Grad:{ai_analysis.get('gradient_importance', '?')}",
+                                    f"AR:{ai_analysis.get('aspect_ratio_risk', '?')}",
+                                    f"Conf:{ai_analysis.get('confidence', 0):.2f}"
+                                ]
+                                ai_summary = "AI: " + " | ".join(ai_parts)
+
                                 if final_decision == "skip":
                                     print(f"      DECISION: SKIP (AI={ai_decision}, Strategy={strategy_decision})")
-                                    
-                                    # Create concise AI summary
-                                    ai_summary = f"AI:{ai_analysis.get('decision', '?').upper()} {ai_analysis.get('post_purpose', '?')[:3]} tx:{ai_analysis.get('text_density', '?')[:1]} risk:{ai_analysis.get('aspect_ratio_risk', '?')[:1]} cp:{ai_analysis.get('crop_safety', '?')[:1]} sz:{ai_analysis.get('resize_strategy', '?')[:3]} goal:{ai_analysis.get('primary_goal', '?')[:3]} edge:{ai_analysis.get('edge_importance', '?')[:1]} grad:{ai_analysis.get('gradient_importance', '?')[:1]}"
-                                    code_summary = f"CODE:SKIP (Reason: {ai_decision if ai_decision == 'skip' else strategy_decision})"
+                                    code_summary = f"CODE: [SKIP] | Reason: {ai_decision if ai_decision == 'skip' else strategy_decision}"
 
                                     all_posts.append({
                                         "id": post_id,
@@ -394,6 +409,10 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                         "debug_ai": ai_summary,
                                         "debug_code": code_summary
                                     })
+                                    # Incremental Save
+                                    cache["posts"] = all_posts
+                                    save_device_reddit_cache(mac, cache)
+                                    
                                     seen_ids.add(post_id)
                                     continue
                                 
@@ -434,13 +453,18 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
                                 print(f"      SUCCESS: Saved to {filename}")
                                 
-                                # Create concise summaries for success case
-                                ai_summary = f"AI:USE {ai_analysis.get('post_purpose', '?')[:3]} tx:{ai_analysis.get('text_density', '?')[:1]} risk:{ai_analysis.get('aspect_ratio_risk', '?')[:1]} cp:{ai_analysis.get('crop_safety', '?')[:1]} sz:{ai_analysis.get('resize_strategy', '?')[:3]} goal:{ai_analysis.get('primary_goal', '?')[:3]} edge:{ai_analysis.get('edge_importance', '?')[:1]} grad:{ai_analysis.get('gradient_importance', '?')[:1]}"
-                                
-                                # Code summary with technical params
-                                code_summary = f"CODE:USE g{strategy.get('gamma', 1.0):.1f} s{strategy.get('sharpen', 0.0):.1f} d{int(strategy.get('dither_strength', 0.0)*100)}% {strategy.get('resize_method', '?')}"
+                                # Code summary with technical params - more readable
+                                code_parts = [
+                                    "[USE]",
+                                    f"Method:{strategy.get('resize_method', '?')}",
+                                    f"Gamma:{strategy.get('gamma', 1.0):.1f}",
+                                    f"Sharp:{strategy.get('sharpen', 0.0):.1f}",
+                                    f"Dither:{int(strategy.get('dither_strength', 0.0)*100)}%"
+                                ]
                                 if strategy.get("max_stretch"):
-                                    code_summary += f" (str:{int(strategy['max_stretch']*100)}%)"
+                                    code_parts.append(f"Stretch:{int(strategy['max_stretch']*100)}%")
+                                
+                                code_summary = "CODE: " + " | ".join(code_parts)
 
                                 all_posts.append({
                                     "id": post_id,
@@ -456,6 +480,10 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     "debug_ai": ai_summary,
                                     "debug_code": code_summary
                                 })
+                                
+                                # Incremental Save
+                                cache["posts"] = all_posts
+                                save_device_reddit_cache(mac, cache)
                                 
                                 seen_ids.add(post_id)
                                 strategy_posts_added += 1

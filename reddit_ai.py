@@ -27,13 +27,15 @@ async def get_process_strategy(ai_output):
     Output:
         dict: Technical processing parameters
     """
-    # Hard drop rules
+    # Hard drop rules - Relaxed: if AI says USE, we try to accommodate.
     if ai_output.get("decision") == "skip":
         return {"decision": "skip"}
     
+    # Instead of skipping high aspect ratio risk with text, we force PADDING to ensure no crop/distortion
+    force_padding = False
     if ai_output.get("aspect_ratio_risk") == "high" and ai_output.get("text_density") in ["medium", "high"]:
-        print(f"      STRATEGY DECISION: SKIP - High aspect ratio risk with medium/high text density.")
-        return {"decision": "skip"}
+        print(f"      STRATEGY: High AR risk + Text detected. Forcing PADDING to preserve content.")
+        force_padding = True
 
     # Stretch limits (mapping from AI design.md)
     STRETCH_LIMITS = {
@@ -94,7 +96,9 @@ async def get_process_strategy(ai_output):
     final_resize_method = "crop" # Default
     final_max_stretch = 0.0
 
-    if resize_strategy == "fill_prefer_stretch":
+    if force_padding:
+        final_resize_method = "padding"
+    elif resize_strategy == "fill_prefer_stretch":
         final_resize_method = "stretch"
         final_max_stretch = max_stretch
     elif resize_strategy == "fill_crop_if_safe":
