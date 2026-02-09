@@ -1,58 +1,24 @@
-import random
+import ai_stylist
 
-async def get_ai_analysis(img_for_ai, post_url, post_title, target_resolution):
+async def get_ai_analysis(img_for_ai, post_url, post_title, target_resolution, ai_prompt=None):
     """
-    AI Interface: Analyzes image and post metadata.
-    Input: 
-        img_for_ai (PIL): Image scaled to <= 512x512
-        post_url (str): URL of the Reddit post
-        post_title (str): Title of the post
-        target_resolution (tuple): (width, height)
-    Output:
-        dict: {
-            content_type: Literal["photo", "comic_cartoon", "text_heavy", "memes", "UI", "charts", "outline", "line arts", "Others"],
-            has_text_overlay: bool,
-            gradient_complexity: Literal["high", "low"],
-            contrast_priority: Literal["detail", "bold"],
-            resize_method: Literal["crop", "padding", "stretch"]
-        }
+    AI Interface: Analyzes image and post metadata using real AI.
     """
-    # Placeholder logic for initial implementation
-    is_meme = any(word in post_title.lower() for word in ["meme", "funny", "when you", "relatable"])
-    is_comic = any(word in post_title.lower() for word in ["comic", "cartoon", "art"])
+    # Use the real AI analysis from ai_stylist
+    style_obj = ai_stylist.analyze_image(
+        img_for_ai, 
+        post_title=post_title, 
+        post_url=post_url, 
+        target_resolution=target_resolution,
+        custom_prompt=ai_prompt
+    )
     
-    # content_type
-    if is_meme:
-        content_type = "memes"
-    elif is_comic:
-        content_type = "comic_cartoon"
-    else:
-        content_type = "photo"
-    
-    # has_text_overlay
-    has_text_overlay = is_meme or is_comic
-    
-    # gradient_complexity: high, low
-    gradient_complexity = "high" if content_type == "photo" else "low"
-    
-    # contrast_priority: detail, bold
-    contrast_priority = "bold" if has_text_overlay else "detail"
-    
-    # resize_method: crop, padding, stretch
-    # Logic: Memes usually stretch, photos usually crop
-    if is_meme:
-        resize_method = "stretch"
-    elif is_comic:
-        resize_method = "padding"
-    else:
-        resize_method = "crop"
-
     return {
-        "content_type": content_type,
-        "has_text_overlay": has_text_overlay,
-        "gradient_complexity": gradient_complexity,
-        "contrast_priority": contrast_priority,
-        "resize_method": resize_method
+        "content_type": style_obj.content_type,
+        "has_text_overlay": style_obj.has_text_overlay,
+        "gradient_complexity": style_obj.gradient_complexity,
+        "contrast_priority": style_obj.contrast_priority,
+        "resize_method": style_obj.resize_method
     }
 
 async def get_process_strategy(ai_output):

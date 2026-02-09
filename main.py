@@ -372,7 +372,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 img_for_ai = img_ori.copy()
                                 img_for_ai.thumbnail((512, 512), Image.Resampling.LANCZOS)
                                 
-                                ai_analysis = await reddit_ai.get_ai_analysis(img_for_ai, entry.link, entry.title, (width, height))
+                                ai_prompt = config.get("ai_prompt")
+                                ai_analysis = await reddit_ai.get_ai_analysis(img_for_ai, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
                                 strategy = await reddit_ai.get_process_strategy(ai_analysis)
                                 
                                 # Inject user preference into analysis for display/processing
@@ -474,7 +475,8 @@ DEFAULT_REDDIT_CONFIG = {
     "cost_pct": 6,
     "dither_strength": 1.0,
     "sharpen_amount": 0.0,
-    "auto_optimize": False
+    "auto_optimize": False,
+    "ai_prompt": ""
 }
 
 @app.get("/api/setup")
