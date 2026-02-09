@@ -368,25 +368,27 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     print(f"  SKIPPED: Ratio misfit for {img_url}")
                                     continue
                                 
-                                # Step 5: AI analysis
-                                ai_strategy = await reddit_ai.get_ai_strategy(img_ori, entry.title, (width, height))
-                                ai_strategy["show_titles"] = show_titles # Inject user preference
+                                # Step 5: AI analysis and Strategy
+                                img_for_ai = img_ori.copy()
+                                img_for_ai.thumbnail((512, 512), Image.Resampling.LANCZOS)
                                 
-                                if ai_strategy.get("strategy") == "skip":
-                                    print(f"  SKIPPED: AI recommended skip for {img_url}")
-                                    continue
+                                ai_analysis = await reddit_ai.get_ai_analysis(img_for_ai, entry.link, entry.title, (width, height))
+                                strategy = await reddit_ai.get_process_strategy(ai_analysis)
+                                
+                                # Inject user preference into analysis for display/processing
+                                ai_analysis["show_titles"] = show_titles
                                 
                                 # Step 6 & 7: Process from img_ori
                                 processed_img, debug_info = await asyncio.to_thread(
                                     image_processor.process_with_ai_strategy,
                                     img_ori,
                                     (width, height),
-                                    ai_strategy,
+                                    ai_analysis,
+                                    strategy,
                                     title=entry.title if show_titles else None,
                                     bit_depth=bit_depth,
                                     clip_pct=clip_pct,
-                                    cost_pct=cost_pct,
-                                    dither_strength=dither_strength
+                                    cost_pct=cost_pct
                                 )
                                 
                                 # Save processed image

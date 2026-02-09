@@ -397,10 +397,10 @@
                         <div class="post-title" x-text="post.title"></div>
                         <!-- AI and Process Debug Info -->
                         <template x-if="post.ai_labels">
-                            <div class="ai-debug" x-text="'AI: ' + post.ai_labels.ai.style + ' | ' + post.ai_labels.ai.strategy + ' | ' + (post.ai_labels.ai.text_heavy ? 'Text+' : 'Text-')"></div>
+                            <div class="ai-debug" x-text="'AI: ' + post.ai_labels.ai.style + ' | ' + post.ai_labels.ai.gradient + ' | ' + (post.ai_labels.ai.text_heavy ? 'Text+' : 'Text-')"></div>
                         </template>
                         <template x-if="post.ai_labels">
-                            <div class="process-debug" x-text="'Proc: g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' ' + post.ai_labels.process.strategy"></div>
+                            <div class="process-debug" x-text="'Proc: g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.process.dither_strength || 0) * 100) + '% ' + post.ai_labels.process.resize_method"></div>
                         </template>
                     </div>
                 </template>

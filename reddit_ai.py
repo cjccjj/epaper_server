@@ -1,65 +1,79 @@
-import base64
-import io
-import json
-import os
-from PIL import Image
-import httpx
+import random
 
-# Simplified AI logic for Reddit image analysis
-# We'll use this to decide if an image is suitable and how to process it.
+async def get_ai_analysis(img_for_ai, post_url, post_title, target_resolution):
+    """
+    AI Interface: Analyzes image and post metadata.
+    Input: 
+        img_for_ai (PIL): Image scaled to <= 512x512
+        post_url (str): URL of the Reddit post
+        post_title (str): Title of the post
+        target_resolution (tuple): (width, height)
+    Output:
+        dict: AI analysis results
+    """
+    # Placeholder logic for initial implementation
+    is_meme = any(word in post_title.lower() for word in ["meme", "funny", "when you", "relatable"])
+    
+    # style: photo, poster, meme, sketch, comic
+    style = "meme" if is_meme else "photo"
+    
+    # gradient: rich, medium, low
+    gradient = "rich" if style == "photo" else "low"
+    
+    # text_heavy: bool
+    text_heavy = is_meme
+    
+    # has_overlay_text: bool (e.g. subtitles in a comic or text in a poster)
+    has_overlay_text = is_meme
+    
+    # resize_method: crop fit, stretch fit, padding fit
+    # Logic: Memes usually stretch, photos usually crop-to-fill
+    resize_method = "stretch fit" if is_meme else "crop fit"
 
-async def analyze_reddit_image(img_to_ai: Image.Image, title: str, target_size: tuple):
-    """
-    Sends a resized image and title to AI for processing strategy.
-    Returns a dict with purpose, style, crop/stretch recommendation, text detection, etc.
-    """
-    # For now, we'll return a simplified strategy based on the content and target size
-    # In a real scenario, this would call OpenAI/Gemini/etc.
-    
-    tw, th = target_size
-    iw, ih = img_to_ai.size
-    
-    # Placeholder for actual AI call
-    # We will implement a mock response that follows the requested structure
-    
-    # Basic heuristic-based "AI" for now
-    is_text_heavy = False
-    if len(title) > 100: # Very long titles might indicate text-heavy context
-        is_text_heavy = True
-        
-    # Determine if it's likely a meme or photo
-    style = "photo"
-    if "meme" in title.lower() or "dank" in title.lower():
-        style = "meme"
-    
-    # Recommendation logic
-    recommendation = "fit" # default
-    ratio_diff = abs((iw/ih) - (tw/th))
-    if ratio_diff < 0.1:
-        recommendation = "stretch"
-    elif ratio_diff > 0.5:
-        recommendation = "skip" # Too much would be lost in crop
-        
     return {
-        "purpose": "Reddit post display",
         "style": style,
-        "strategy": recommendation, # "crop", "stretch", "skip"
-        "text_heavy": is_text_heavy,
-        "has_text_overlay": style == "meme",
-        "content_type": "illustration" if style == "meme" else "photography",
-        "suggested_gamma": 2.2 if style == "meme" else 1.0,
-        "suggested_sharpen": 0.5 if is_text_heavy else 0.2
+        "has_overlay_text": has_overlay_text,
+        "text_heavy": text_heavy,
+        "gradient": gradient,
+        "resize_method": resize_method
     }
 
-async def get_ai_strategy(img: Image.Image, title: str, target_size: tuple):
+async def get_process_strategy(ai_output):
     """
-    Step 5: Use AI to decide what to do with the image.
-    Resizes to 512x512 first (img_to_AI).
+    Process Strategy Interface: Converts AI analysis into technical parameters.
+    Input: 
+        ai_output (dict): Output from get_ai_analysis
+    Output:
+        dict: Technical processing parameters
     """
-    # Resize to 512x512 for AI (fit resize, no stretch)
-    ai_input_img = img.copy()
-    ai_input_img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+    style = ai_output.get("style", "photo")
+    text_heavy = ai_output.get("text_heavy", False)
+    gradient = ai_output.get("gradient", "medium")
     
-    # In a real implementation, we'd convert to base64 and send to an LLM
-    # For now, we use our simplified analyzer
-    return await analyze_reddit_image(ai_input_img, title, target_size)
+    # Default parameters
+    gamma = 1.0
+    sharpen = 0.0
+    dither_strength = 1.0
+    
+    # Refine based on AI output
+    if style == "photo":
+        gamma = 1.2 if gradient == "rich" else 1.1
+        sharpen = 0.2
+    elif style == "meme":
+        gamma = 1.0
+        sharpen = 0.6 # High sharpening for text clarity
+        dither_strength = 0.8 # Less dither to keep text clean
+    elif style == "poster":
+        gamma = 1.1
+        sharpen = 0.4
+    
+    if text_heavy:
+        sharpen = max(sharpen, 0.8)
+        dither_strength = min(dither_strength, 0.7)
+
+    return {
+        "resize_method": ai_output.get("resize_method", "crop fit"),
+        "gamma": gamma,
+        "sharpen": sharpen,
+        "dither_strength": dither_strength
+    }

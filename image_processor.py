@@ -36,36 +36,46 @@ def download_image_simple(url):
         print(f"Error downloading image: {e}")
         return None
 
-def process_with_ai_strategy(img_ori, target_size, ai_strategy, title=None, bit_depth=1, 
-                             clip_pct=22, cost_pct=6, dither_strength=1.0):
+def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=None, bit_depth=1, 
+                             clip_pct=22, cost_pct=6):
     """
-    Step 6 & 7: Process the image according to AI output and strategy.
+    Step 6 & 7: Process the image according to AI analysis and strategy parameters.
     Note: Process from img_ori.
     """
-    # 1. Decide resize method from AI strategy
-    strategy = ai_strategy.get("strategy", "fit")
+    # 1. Decide resize method from strategy
+    resize_method = strategy.get("resize_method", "crop fit")
     tw, th = target_size
     
-    if strategy == "stretch":
+    if resize_method == "stretch fit":
         img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
+    elif resize_method == "padding fit":
+        # Padding fit: resize to fit inside target and pad with white/black
+        img = img_ori.copy()
+        img.thumbnail((tw, th), Image.Resampling.LANCZOS)
+        new_img = Image.new("L", (tw, th), 255) # White background
+        offset = ((tw - img.width) // 2, (th - img.height) // 2)
+        new_img.paste(img.convert("L"), offset)
+        img = new_img
     else:
-        # Default to fit (crop-to-fill)
+        # Default to crop fit (crop-to-fill)
         img = fit_resize(img_ori, target_size)
     
-    # 2. Apply AI suggested parameters
-    gamma_val = ai_strategy.get("suggested_gamma", 1.0)
-    sharpen_amount = ai_strategy.get("suggested_sharpen", 0.0)
+    # 2. Apply strategy parameters
+    gamma_val = strategy.get("gamma", 1.0)
+    sharpen_amount = strategy.get("sharpen", 0.0)
+    dither_strength = strategy.get("dither_strength", 1.0)
     
     # 3. Sharpening
     if sharpen_amount > 0:
         img = sharpen_image(img, sharpen_amount)
         
-    # 4. Convert to grayscale
-    img = img.convert("L")
+    # 4. Convert to grayscale (if not already done by padding)
+    if img.mode != "L":
+        img = img.convert("L")
     data = np.array(img).astype(np.float32)
     
     # 5. Gamma Correction
-    if gamma_val > 1.0:
+    if gamma_val != 1.0:
         data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
     
     data = data.astype(np.uint8)
@@ -82,18 +92,15 @@ def process_with_ai_strategy(img_ori, target_size, ai_strategy, title=None, bit_
         out_img = Image.fromarray(data).convert("L")
         
     # 8. Text Overlay (Step 7)
-    if title and ai_strategy.get("show_titles", True):
+    # Use AI's analysis for show_titles unless overridden by user
+    show_titles = ai_analysis.get("show_titles", True)
+    if title and show_titles:
         out_img = overlay_title(out_img, title)
         
     # Build debug info string
     debug_info = {
-        "ai": ai_strategy,
-        "process": {
-            "strategy": strategy,
-            "gamma": gamma_val,
-            "sharpen": sharpen_amount,
-            "bit_depth": bit_depth
-        }
+        "ai": ai_analysis,
+        "process": strategy
     }
         
     return out_img, debug_info
