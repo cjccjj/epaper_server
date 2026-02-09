@@ -8,6 +8,96 @@ import ai_stylist
 # Configuration
 STRETCH_THRESHOLD = 0.33  # If padding ratio is less than this, stretch image instead of padding
 
+def check_ratio_fit(img, target_size=(400, 300), threshold=STRETCH_THRESHOLD):
+    """
+    Step 3: Check if image resolution fits within STRETCH_THRESHOLD.
+    Returns True if it fits, False otherwise.
+    """
+    tw, th = target_size
+    iw, ih = img.size
+    
+    target_ratio = tw / th
+    img_ratio = iw / ih
+    
+    # Calculate how much we'd need to stretch/crop
+    ratio_diff = abs(img_ratio - target_ratio) / target_ratio
+    
+    # If the difference is within threshold, it's a fit
+    return ratio_diff <= threshold
+
+def download_image_simple(url):
+    """Step 2: Download image as img_ori"""
+    headers = {"User-Agent": "linux:epaper-rss-reader:v1.0.0 (by /u/cj)"}
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        return Image.open(io.BytesIO(response.content))
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        return None
+
+def process_with_ai_strategy(img_ori, target_size, ai_strategy, title=None, bit_depth=1, 
+                             clip_pct=22, cost_pct=6, dither_strength=1.0):
+    """
+    Step 6 & 7: Process the image according to AI output and strategy.
+    Note: Process from img_ori.
+    """
+    # 1. Decide resize method from AI strategy
+    strategy = ai_strategy.get("strategy", "fit")
+    tw, th = target_size
+    
+    if strategy == "stretch":
+        img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
+    else:
+        # Default to fit (crop-to-fill)
+        img = fit_resize(img_ori, target_size)
+    
+    # 2. Apply AI suggested parameters
+    gamma_val = ai_strategy.get("suggested_gamma", 1.0)
+    sharpen_amount = ai_strategy.get("suggested_sharpen", 0.0)
+    
+    # 3. Sharpening
+    if sharpen_amount > 0:
+        img = sharpen_image(img, sharpen_amount)
+        
+    # 4. Convert to grayscale
+    img = img.convert("L")
+    data = np.array(img).astype(np.float32)
+    
+    # 5. Gamma Correction
+    if gamma_val > 1.0:
+        data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
+    
+    data = data.astype(np.uint8)
+    
+    # 6. Auto-Contrast
+    data = apply_ac(data, clip_pct, cost_pct)
+    
+    # 7. Dithering
+    if bit_depth == 1:
+        data = apply_fs(data, strength=dither_strength)
+        out_img = Image.fromarray(data).convert("1")
+    else:
+        data = apply_4g_fs(data, strength=dither_strength)
+        out_img = Image.fromarray(data).convert("L")
+        
+    # 8. Text Overlay (Step 7)
+    if title and ai_strategy.get("show_titles", True):
+        out_img = overlay_title(out_img, title)
+        
+    # Build debug info string
+    debug_info = {
+        "ai": ai_strategy,
+        "process": {
+            "strategy": strategy,
+            "gamma": gamma_val,
+            "sharpen": sharpen_amount,
+            "bit_depth": bit_depth
+        }
+    }
+        
+    return out_img, debug_info
+
 def sharpen_image(img, amount=1.0):
     """Apply Laplacian-style sharpening to a PIL image."""
     if amount <= 0:

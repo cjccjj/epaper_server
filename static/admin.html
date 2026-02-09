@@ -97,6 +97,8 @@
         .reddit-post:hover { transform: translateY(-2px); border-color: var(--primary); }
         .reddit-post img { width: 100%; height: 150px; object-fit: cover; background: #000; }
         .reddit-post .post-title { padding: 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+        .reddit-post .ai-debug { padding: 4px 6px; font-size: 9px; color: #818cf8; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; }
+        .reddit-post .process-debug { padding: 4px 6px; font-size: 9px; color: #10b981; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; }
 
         .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         .preview-box { display: flex; flex-direction: column; gap: 4px; }
@@ -393,6 +395,13 @@
                     <div class="reddit-post" @click="showOverlay('/api/bitmap/' + post.filename)">
                         <img :src="'/api/bitmap/' + post.filename">
                         <div class="post-title" x-text="post.title"></div>
+                        <!-- AI and Process Debug Info -->
+                        <template x-if="post.ai_labels">
+                            <div class="ai-debug" x-text="'AI: ' + post.ai_labels.ai.style + ' | ' + post.ai_labels.ai.strategy + ' | ' + (post.ai_labels.ai.text_heavy ? 'Text+' : 'Text-')"></div>
+                        </template>
+                        <template x-if="post.ai_labels">
+                            <div class="process-debug" x-text="'Proc: g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' ' + post.ai_labels.process.strategy"></div>
+                        </template>
                     </div>
                 </template>
             </div>

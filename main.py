@@ -17,6 +17,7 @@ import re
 import asyncio
 import image_processor
 import ai_stylist
+import reddit_ai
 import random
 import io
 from PIL import Image
@@ -357,22 +358,39 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
                             try:
-                                title_to_overlay = entry.title if show_titles else None
-                                print(f"  DEBUG: Processing {img_url} -> {filename} ({bit_depth}-bit)")
-                                _, ai_labels = await asyncio.to_thread(
-                                    image_processor.process_image_url, 
-                                    img_url, filepath,
-                                    target_size=(width, height),
-                                    title=title_to_overlay,
+                                # Step 2: Download image as img_ori
+                                img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
+                                if not img_ori:
+                                    continue
+                                
+                                # Step 3: Check ratio fit
+                                if not image_processor.check_ratio_fit(img_ori, target_size=(width, height)):
+                                    print(f"  SKIPPED: Ratio misfit for {img_url}")
+                                    continue
+                                
+                                # Step 5: AI analysis
+                                ai_strategy = await reddit_ai.get_ai_strategy(img_ori, entry.title, (width, height))
+                                ai_strategy["show_titles"] = show_titles # Inject user preference
+                                
+                                if ai_strategy.get("strategy") == "skip":
+                                    print(f"  SKIPPED: AI recommended skip for {img_url}")
+                                    continue
+                                
+                                # Step 6 & 7: Process from img_ori
+                                processed_img, debug_info = await asyncio.to_thread(
+                                    image_processor.process_with_ai_strategy,
+                                    img_ori,
+                                    (width, height),
+                                    ai_strategy,
+                                    title=entry.title if show_titles else None,
                                     bit_depth=bit_depth,
                                     clip_pct=clip_pct,
                                     cost_pct=cost_pct,
-                                    apply_gamma=apply_gamma,
-                                    dither_mode=dither_mode,
-                                    dither_strength=dither_strength,
-                                    sharpen_amount=sharpen_amount,
-                                    auto_optimize=auto_optimize
+                                    dither_strength=dither_strength
                                 )
+                                
+                                # Save processed image
+                                await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
                                 
                                 all_posts.append({
                                     "id": post_id,
@@ -384,7 +402,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     "bit_depth": bit_depth,
                                     "width": width,
                                     "height": height,
-                                    "ai_labels": ai_labels
+                                    "ai_labels": debug_info # Store full debug info here
                                 })
                                 
                                 seen_ids.add(post_id)
@@ -392,6 +410,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 filename_counter += 1
                             except Exception as e:
                                 print(f"  SKIPPED: Image processing failed for {post_id}: {e}")
+                                import traceback
+                                traceback.print_exc()
                                 continue
                         else:
                             # print(f"  DEBUG: No image found for {post_id}")
