@@ -236,14 +236,14 @@
 
                 <div class="config-row">
                     <div class="config-group">
-                        <label>Sharpen</label>
-                        <input type="range" x-model="galleryConfig.sharpen" min="0" max="2.0" step="0.1" @input="processImage()">
-                        <span class="val" x-text="parseFloat(galleryConfig.sharpen || 0).toFixed(1)">0.0</span>
-                    </div>
-                    <div class="config-group">
                         <label>Gamma</label>
                         <input type="range" x-model="galleryConfig.gamma" min="0" max="7" step="1" @input="processImage()">
                         <span class="val" x-text="gammaLabels && galleryConfig && gammaLabels[galleryConfig.gamma] !== undefined ? gammaLabels[galleryConfig.gamma].toFixed(1) : '1.0'">1.0</span>
+                    </div>
+                    <div class="config-group">
+                        <label>Sharpen</label>
+                        <input type="range" x-model="galleryConfig.sharpen" min="0" max="2.0" step="0.1" @input="processImage()">
+                        <span class="val" x-text="parseFloat(galleryConfig.sharpen || 0).toFixed(1)">0.0</span>
                     </div>
                 </div>
 

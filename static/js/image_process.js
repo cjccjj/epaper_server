@@ -66,37 +66,35 @@ const ImageProcess = {
             totalPotentialDamage += hist[i] * Math.abs(i - avg);
         }
 
-        const targetArea = total * (clipPct / 100);
-        const targetCost = totalPotentialDamage * (costPct / 100);
-        const minTarget = total * 0.005; // 0.5% safety clip
+        const targetArea = total * clipPct;
+        const targetCost = totalPotentialDamage * costPct;
+        const minTarget = total * 0.002; // 0.2% safety clip
 
-        let remBlack = total, remWhite = total;
         let left = 0, right = 255;
-        let clippedBlack = 0, clippedWhite = 0, clippedTotal = 0, totalCost = 0;
+        let clippedTotal = 0, totalCost = 0;
+        let clippedL = 0, clippedR = 0;
 
+        // Safety clip first
+        while (left < right && clippedL < minTarget) { clippedL += hist[left]; left++; }
+        while (left < right && clippedR < minTarget) { clippedR += hist[right]; right--; }
+
+        // Weighted approaching
         while (left < right && totalCost < targetCost && clippedTotal < targetArea) {
-            if (remWhite >= remBlack) {
-                const count = hist[right];
-                const costVal = count * (255 - right);
-                totalCost += costVal;
-                clippedTotal += count;
-                remWhite -= count;
-                clippedWhite += count;
-                right--;
-            } else {
-                const count = hist[left];
-                const costVal = count * left;
-                totalCost += costVal;
-                clippedTotal += count;
-                remBlack -= count;
-                clippedBlack += count;
+            const costL = hist[left] * left;
+            const costR = hist[right] * (255 - right);
+
+            if (costL <= costR) {
+                if (totalCost + costL > targetCost) break;
+                totalCost += costL;
+                clippedTotal += hist[left];
                 left++;
+            } else {
+                if (totalCost + costR > targetCost) break;
+                totalCost += costR;
+                clippedTotal += hist[right];
+                right--;
             }
         }
-
-        // Safety clips
-        while (left < right && clippedBlack < minTarget) { clippedBlack += hist[left]; left++; }
-        while (left < right && clippedWhite < minTarget) { clippedWhite += hist[right]; right--; }
 
         const acScale = 255 / (right - left || 1);
         for (let i = 0; i < data.length; i += 4) {
@@ -179,8 +177,8 @@ const ImageProcess = {
         const data = imageData.data;
 
         this.grayscale(data);
-        this.sharpen(data, width, height, sharpen);
         this.gammaCorrection(data, gamma);
+        this.sharpen(data, width, height, sharpen);
         const { left, right } = this.autoContrast(data, width, height, clipPct, costPct);
 
         // 3. Dither on a copy
