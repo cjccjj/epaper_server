@@ -43,12 +43,13 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
     Note: Process from img_ori.
     """
     # 1. Decide resize method from strategy
-    resize_method = strategy.get("resize_method", "crop fit")
+    # Literals: "crop", "padding", "stretch"
+    resize_method = strategy.get("resize_method", "crop")
     tw, th = target_size
     
-    if resize_method == "stretch fit":
+    if resize_method == "stretch":
         img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
-    elif resize_method == "padding fit":
+    elif resize_method == "padding":
         # Padding fit: resize to fit inside target and pad with white/black
         img = img_ori.copy()
         img.thumbnail((tw, th), Image.Resampling.LANCZOS)
@@ -57,7 +58,7 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
         new_img.paste(img.convert("L"), offset)
         img = new_img
     else:
-        # Default to crop fit (crop-to-fill)
+        # Default to crop (crop-to-fill)
         img = fit_resize(img_ori, target_size)
     
     # 2. Apply strategy parameters
@@ -92,8 +93,8 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
         out_img = Image.fromarray(data).convert("L")
         
     # 8. Text Overlay (Step 7)
-    # Use AI's analysis for show_titles unless overridden by user
-    show_titles = ai_analysis.get("show_titles", True)
+    # Use AI's analysis for has_text_overlay (used to be show_titles)
+    show_titles = ai_analysis.get("has_text_overlay", True)
     if title and show_titles:
         out_img = overlay_title(out_img, title)
         
@@ -178,7 +179,7 @@ def fit_resize(img, target_size=(400, 300), stretch_threshold=STRETCH_THRESHOLD)
     return target
 
 def apply_ac(data, clip_pct=22, cost_pct=6):
-    """Weighted Approaching Auto-Contrast logic ported from JS."""
+    """Weighted Approaching Auto-Contrast logic ported from JS (Fixed version)."""
     h, w = data.shape
     hist, _ = np.histogram(data, bins=256, range=(0, 256))
     
@@ -186,7 +187,6 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     avg = np.mean(data)
     
     # Calculate potential damage
-    # Optimized: Vectorized calculation instead of loop
     indices = np.arange(256)
     total_potential_damage = np.sum(hist * np.abs(indices - avg))
         
@@ -194,8 +194,6 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     target_cost = total_potential_damage * (cost_pct / 100.0)
     min_target = total * 0.005 # 0.5% safety clip
     
-    rem_black = total
-    rem_white = total
     left = 0
     right = 255
     clipped_black = 0
@@ -203,31 +201,29 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     clipped_total = 0
     total_cost = 0
     
-    while left < right and total_cost < target_cost and clipped_total < target_area:
-        if rem_white >= rem_black:
-            count = hist[right]
-            cost = count * (255 - right)
-            total_cost += cost
-            clipped_total += count
-            rem_white -= count
-            clipped_white += count
-            right -= 1
-        else:
-            count = hist[left]
-            cost = count * left
-            total_cost += cost
-            clipped_total += count
-            rem_black -= count
-            clipped_black += count
-            left += 1
-            
-    # Safety clips
-    while left < right and clipped_black < min_target:
+    # 1. Safety clips first
+    while left < 255 and clipped_black < min_target:
         clipped_black += hist[left]
+        clipped_total += hist[left]
         left += 1
-    while left < right and clipped_white < min_target:
+    while right > left and clipped_white < min_target:
         clipped_white += hist[right]
+        clipped_total += hist[right]
         right -= 1
+
+    # 2. Weighted approaching
+    while left < right and total_cost < target_cost and clipped_total < target_area:
+        costL = hist[left] * abs(left - avg)
+        costR = hist[right] * abs(right - avg)
+        
+        if costL < costR:
+            total_cost += costL
+            clipped_total += hist[left]
+            left += 1
+        else:
+            total_cost += costR
+            clipped_total += hist[right]
+            right -= 1
         
     scale = 255.0 / (right - left if right > left else 1)
     

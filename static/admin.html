@@ -402,14 +402,14 @@
                         <!-- AI and Process Debug Info -->
                         <template x-if="post.ai_labels">
                             <div class="ai-debug">
-                                <div x-text="'Style: ' + post.ai_labels.ai.style"></div>
-                                <div x-text="'Grad: ' + post.ai_labels.ai.gradient + ' | Text: ' + (post.ai_labels.ai.text_heavy ? 'Heavy' : 'Light')"></div>
-                                <div x-text="'Overlay: ' + (post.ai_labels.ai.has_overlay_text ? 'Yes' : 'No')"></div>
+                                <div x-text="'Type: ' + post.ai_labels.ai.content_type"></div>
+                                <div x-text="'Grad: ' + post.ai_labels.ai.gradient_complexity + ' | Pri: ' + post.ai_labels.ai.contrast_priority"></div>
+                                <div x-text="'Overlay: ' + (post.ai_labels.ai.has_text_overlay ? 'Yes' : 'No')"></div>
                             </div>
                         </template>
                         <template x-if="post.ai_labels">
                             <div class="process-debug">
-                                <div x-text="'Proc: ' + post.ai_labels.process.resize_method"></div>
+                                <div x-text="'Proc: ' + post.ai_labels.ai.resize_method"></div>
                                 <div x-text="'g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.process.dither_strength || 0) * 100) + '%'"></div>
                             </div>
                         </template>
