@@ -22,31 +22,29 @@ DEFAULT_SYSTEM_PROMPT = """You are an e-paper image optimization expert.
 Analyze the provided image and metadata (title, URL) to categorize its visual characteristics.
 This help choose the best dithering, sharpening, and resizing parameters for an e-paper display.
 
-Decision Guidelines:
-- 'use': Image is high quality, relevant, and suitable for e-paper (good contrast, clear subjects).
-- 'skip': Image is low quality, blurry, contains too much fine detail that won't dither well, or is irrelevant/spam.
-
-Guidelines for content_type:
-- 'photo': Real-world photography.
-- 'comic_cartoon': Illustrations, comics, cartoons.
-- 'text_heavy': Images where text is the primary content (e.g., screenshots of text).
-- 'memes': Images with meme-style text overlays.
-- 'UI': Software user interfaces, app screenshots.
-- 'charts': Infographics, diagrams, charts.
-- 'outline': Simple line drawings, outlines.
-- 'line arts': Detailed line art.
-- 'Others': Anything else.
-
-Guidelines for other fields:
-- has_text_overlay: true if there is clear readable text added on top of the image.
-- gradient_complexity: 'high' for photos/smooth gradients, 'low' for flat colors/UI.
-- contrast_priority: 'detail' to preserve textures, 'bold' to prioritize sharp edges/readability.
-- resize_method: 'crop' to fill the screen (best for photos), 'padding' to show the whole image with borders (best for art/comics), 'stretch' to fill without cropping (rarely used).
+Required Output Fields & Guidelines:
+1. decision:
+   - 'use': Image is high quality, relevant, and suitable for e-paper (good contrast, clear subjects, or meaningful text).
+   - 'skip': Image is low quality, blurry, contains too much fine detail that won't dither well, is a tracking pixel, or is irrelevant/spam.
+2. content_type:
+   - 'photo': Real-world photography.
+   - 'comic_cartoon': Illustrations, comics, cartoons.
+   - 'text_heavy': Images where text is the primary content (e.g., screenshots of text).
+   - 'memes': Images with meme-style text overlays.
+   - 'UI': Software user interfaces, app screenshots.
+   - 'charts': Infographics, diagrams, charts.
+   - 'outline': Simple line drawings, outlines.
+   - 'line arts': Detailed line art.
+   - 'Others': Anything else.
+3. has_text_overlay: true if there is clear readable text added on top of the image.
+4. gradient_complexity: 'high' for photos/smooth gradients, 'low' for flat colors/UI.
+5. contrast_priority: 'detail' to preserve textures, 'bold' to prioritize sharp edges/readability.
+6. resize_method: 'crop' to fill the screen (best for photos), 'padding' to show the whole image with borders (best for art/comics), 'stretch' to fill without cropping.
 """
 
-def analyze_image(image_url, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageStyle:
+def analyze_image(image_input, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageStyle:
     """
-    Analyzes an image URL using OpenAI Vision and returns a structured style object.
+    Analyzes an image (URL or PIL Image) using OpenAI Vision and returns a structured style object.
     """
     system_prompt = custom_prompt if custom_prompt else DEFAULT_SYSTEM_PROMPT
     
@@ -61,14 +59,29 @@ def analyze_image(image_url, post_title="", post_url="", target_resolution=(400,
             resize_method="crop"
         )
 
+    # Handle image input
+    if isinstance(image_input, str):
+        # It's a URL
+        image_data = {
+            "url": image_input,
+            "detail": "low"
+        }
+    else:
+        # It's a PIL Image, convert to base64
+        buffered = BytesIO()
+        # Resize if very large to save tokens and speed up, but OpenAI handles it too
+        image_input.save(buffered, format="JPEG", quality=85)
+        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        image_data = {
+            "url": f"data:image/jpeg;base64,{base64_image}",
+            "detail": "low"
+        }
+
     user_content = [
         {"type": "input_text", "text": f"Analyze this image for e-paper optimization.\nPost Title: {post_title}\nPost URL: {post_url}\nTarget Resolution: {target_resolution[0]}x{target_resolution[1]}"},
         {
             "type": "input_image",
-            "image_url": {
-                "url": image_url,
-                "detail": "low"
-            },
+            "image_url": image_data,
         },
     ]
 
@@ -82,7 +95,7 @@ def analyze_image(image_url, post_title="", post_url="", target_resolution=(400,
                     "content": user_content,
                 }
             ],
-            response_format=ImageStyle,
+            text_format=ImageStyle,
         )
         return response.output_parsed
     except Exception as e:
