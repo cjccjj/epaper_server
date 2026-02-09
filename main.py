@@ -342,6 +342,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])):
                                 
                                 print(f"      REUSE: Existing image found in cache.")
+                                if "status" not in existing:
+                                    existing["status"] = "use"
                                 all_posts.append(existing)
                                 seen_ids.add(post_id)
                                 strategy_posts_added += 1
@@ -378,16 +380,34 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 ai_analysis = await reddit_ai.get_ai_analysis(img_url, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
                                 print(f"      AI Response: {ai_analysis}")
                                 
-                                if ai_analysis.get("decision") == "skip":
-                                    print(f"      AI DECISION: SKIP - This post does not meet criteria.")
-                                    continue
-                                    
+                                # Check AI decision early
+                                ai_decision = ai_analysis.get("decision", "use")
                                 strategy = await reddit_ai.get_process_strategy(ai_analysis)
-                                if strategy.get("decision") == "skip":
-                                    print(f"      STRATEGY DECISION: SKIP - Dropped by processing rules.")
+                                strategy_decision = strategy.get("decision", "use")
+                                
+                                final_decision = "skip" if ai_decision == "skip" or strategy_decision == "skip" else "use"
+                                
+                                if final_decision == "skip":
+                                    print(f"      DECISION: SKIP (AI={ai_decision}, Strategy={strategy_decision})")
+                                    all_posts.append({
+                                        "id": post_id,
+                                        "title": entry.title,
+                                        "url": entry.link,
+                                        "img_url": img_url,
+                                        "filename": None,
+                                        "status": "skip",
+                                        "strategy": label,
+                                        "ai_labels": {
+                                            "ai": ai_analysis,
+                                            "strategy": strategy,
+                                            "reason": "AI skip" if ai_decision == "skip" else "Strategy skip"
+                                        }
+                                    })
+                                    seen_ids.add(post_id)
+                                    # We don't increment strategy_posts_added for skipped posts
                                     continue
                                 
-                                # Download only if AI says 'use'
+                                # Download only if we are using it
                                 print(f"      Downloading: {img_url}")
                                 img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                                 if not img_ori:
@@ -430,11 +450,16 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     "url": entry.link,
                                     "img_url": img_url,
                                     "filename": filename,
+                                    "status": "use",
                                     "strategy": label,
                                     "bit_depth": bit_depth,
                                     "width": width,
                                     "height": height,
-                                    "ai_labels": debug_info # Store full debug info here
+                                    "ai_labels": {
+                                        "ai": ai_analysis,
+                                        "strategy": strategy,
+                                        "process": debug_info
+                                    }
                                 })
                                 
                                 seen_ids.add(post_id)

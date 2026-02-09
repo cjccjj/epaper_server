@@ -99,8 +99,10 @@
         .reddit-post .post-title { padding: 6px 6px 2px 6px; font-size: 11px; line-height: 1.3; color: var(--text); flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
         .reddit-post .post-url { padding: 0 6px 6px 6px; font-size: 9px; color: var(--primary); text-decoration: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; }
         .reddit-post .post-url:hover { text-decoration: underline; }
-        .reddit-post .ai-debug { padding: 4px 6px; font-size: 9px; color: #818cf8; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; line-height: 1.2; }
+        .reddit-post .ai-debug { padding: 4px 6px; font-size: 9px; color: #818cf8; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; line-height: 1.2; white-space: pre-wrap; word-break: break-all; }
         .reddit-post .process-debug { padding: 4px 6px; font-size: 9px; color: #10b981; background: rgba(0,0,0,0.3); border-top: 1px solid var(--border); font-family: monospace; line-height: 1.2; }
+        .text-red { color: #ef4444 !important; font-weight: bold; }
+        .reddit-post.skipped { border-color: rgba(239, 68, 68, 0.4); opacity: 0.8; }
 
         .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         .preview-box { display: flex; flex-direction: column; gap: 4px; }
@@ -398,24 +400,27 @@
             </div>
 
             <div class="reddit-preview-list">
-                <template x-for="post in redditPreview" :key="post.url">
-                    <div class="reddit-post" @click="showOverlay('/api/bitmap/' + post.filename)">
-                        <img :src="'/api/bitmap/' + post.filename">
+                <template x-for="post in redditPreview" :key="post.id || post.url">
+                    <div class="reddit-post" :class="{ 'skipped': post.status === 'skip' }" @click="showOverlay(post.filename ? '/api/bitmap/' + post.filename : post.img_url)">
+                        <img :src="post.filename ? '/api/bitmap/' + post.filename : post.img_url">
                         <div class="post-title" x-text="post.title"></div>
+                        <div style="padding: 0 6px; font-size: 9px;">
+                            <span :class="post.status === 'skip' ? 'text-red' : ''" x-text="'Status: ' + (post.status || 'use').toUpperCase()"></span>
+                        </div>
                         <a :href="post.url" target="_blank" class="post-url" @click.stop x-text="post.url"></a>
                         
                         <!-- AI and Process Debug Info -->
-                        <template x-if="post.ai_labels">
+                        <template x-if="post.ai_labels && post.ai_labels.ai">
                             <div class="ai-debug">
-                                <div x-text="'Type: ' + post.ai_labels.ai.content_type"></div>
-                                <div x-text="'Grad: ' + post.ai_labels.ai.gradient_complexity + ' | Pri: ' + post.ai_labels.ai.contrast_priority"></div>
-                                <div x-text="'Overlay: ' + (post.ai_labels.ai.has_text_overlay ? 'Yes' : 'No')"></div>
+                                <div x-text="'AI: ' + post.ai_labels.ai.post_purpose + ' | txt:' + post.ai_labels.ai.text_density"></div>
+                                <div x-text="'Risk: ' + post.ai_labels.ai.aspect_ratio_risk + ' | Crop: ' + post.ai_labels.ai.crop_safety"></div>
+                                <div x-text="'Goal: ' + post.ai_labels.ai.primary_goal"></div>
                             </div>
                         </template>
-                        <template x-if="post.ai_labels">
+                        <template x-if="post.ai_labels && post.ai_labels.strategy">
                             <div class="process-debug">
-                                <div x-text="'Proc: ' + post.ai_labels.ai.resize_method"></div>
-                                <div x-text="'g' + (post.ai_labels.process.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.process.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.process.dither_strength || 0) * 100) + '%'"></div>
+                                <div x-text="'Strat: ' + post.ai_labels.ai.resize_strategy + (post.ai_labels.strategy.max_stretch ? ' (s:' + Math.round(post.ai_labels.strategy.max_stretch*100) + '%)' : '')"></div>
+                                <div x-text="'g' + (post.ai_labels.strategy.gamma || 1).toFixed(1) + ' s' + (post.ai_labels.strategy.sharpen || 0).toFixed(1) + ' d' + Math.round((post.ai_labels.strategy.dither_strength || 0) * 100) + '%'"></div>
                             </div>
                         </template>
                     </div>
