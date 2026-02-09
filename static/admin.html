@@ -189,14 +189,10 @@
         <div x-show="currentTab === 'gallery'" class="tab-content">
             <h3>🖼️ Gallery Manager</h3>
             <div class="gallery" style="margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
-                <template x-for="item in galleryItems" :key="item.filename">
-                    <div class="image-item" @click="showOverlay(item.url)">
-                        <img :src="item.url">
-                        <button class="delete-btn" @click.stop="deleteImage(item.filename)">×</button>
-                        <div x-show="item.active" class="active-badge">ACTIVE</div>
-                        <template x-if="!item.active">
-                            <button @click.stop="setAsActive(item.filename)" style="position: absolute; bottom: 0; right: 0; background: var(--primary); color: white; border: none; font-size: 8px; padding: 1px 4px; cursor: pointer;">SET ACTIVE</button>
-                        </template>
+                <template x-for="item in galleryItems" :key="item.id">
+                    <div class="image-item" @click="showOverlay('/api/bitmap/' + item.filename)">
+                        <img :src="'/api/bitmap/' + item.filename">
+                        <button class="delete-btn" @click.stop="deleteImage(item.id)">×</button>
                     </div>
                 </template>
             </div>

@@ -152,11 +152,9 @@ document.addEventListener('alpine:init', () => {
         // --- Gallery Management ---
         async loadGallery() {
             if (!this.currentMac) return;
-            try {
-                const res = await fetch(`/admin/gallery/${this.currentMac}`);
-                this.galleryItems = await res.json();
-            } catch (e) {
-                console.error("Failed to load gallery:", e);
+            const device = this.devices.find(d => d.mac_address === this.currentMac);
+            if (device) {
+                this.galleryItems = device.images || [];
             }
         },
 
@@ -272,11 +270,12 @@ document.addEventListener('alpine:init', () => {
             fd.append('file', blob, 'image.png');
             
             try {
-                const res = await fetch(`/admin/gallery/${this.currentMac}/upload`, {
+                const res = await fetch(`/admin/upload/${this.currentMac}`, {
                     method: 'POST',
                     body: fd
                 });
                 if (res.ok) {
+                    await this.fetchDevices();
                     await this.loadGallery();
                     alert("Uploaded successfully!");
                 } else {
@@ -288,23 +287,23 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async deleteImage(filename) {
+        async deleteImage(imageId) {
             if (!confirm("Delete this image?")) return;
             try {
-                const res = await fetch(`/admin/gallery/${this.currentMac}/delete/${filename}`, { method: 'DELETE' });
-                if (res.ok) await this.loadGallery();
+                const res = await fetch(`/admin/image/${imageId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    await this.fetchDevices();
+                    await this.loadGallery();
+                }
             } catch (e) {
                 console.error("Delete error:", e);
             }
         },
 
         async setAsActive(filename) {
-            try {
-                const res = await fetch(`/admin/gallery/${this.currentMac}/set_active/${filename}`, { method: 'POST' });
-                if (res.ok) await this.loadGallery();
-            } catch (e) {
-                console.error("Set active error:", e);
-            }
+            // Backend currently cycles through images, so "set active" is not explicitly supported
+            // via a dedicated endpoint. We could implement current_image_index update if needed.
+            console.log("Set as active currently not supported by backend cycling logic.");
         },
 
         showOverlay(url) {
@@ -317,31 +316,27 @@ document.addEventListener('alpine:init', () => {
         // --- Reddit Management ---
         async loadRedditConfig() {
             if (!this.currentMac) return;
-            try {
-                const res = await fetch(`/admin/reddit/config/${this.currentMac}`);
-                const config = await res.json();
-                if (config) {
-                    this.redditConfig = config;
-                }
-                await this.loadRedditPreview();
-            } catch (e) {
-                console.error("Failed to load reddit config:", e);
+            const device = this.devices.find(d => d.mac_address === this.currentMac);
+            if (device && device.reddit_config) {
+                this.redditConfig = device.reddit_config;
             }
+            await this.loadRedditPreview();
         },
 
         async saveRedditConfig(showSuccess = true, refreshPreview = true) {
             if (!this.currentMac) return;
             try {
-                const res = await fetch(`/admin/reddit/config/${this.currentMac}`, {
+                const res = await fetch(`/admin/device/${this.currentMac}/settings`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(this.redditConfig)
+                    body: JSON.stringify({ reddit_config: this.redditConfig })
                 });
                 if (res.ok) {
                     if (showSuccess) {
                         this.redditStatus = '<span style="color: #10b981;">✅ Config Saved</span>';
                         setTimeout(() => { this.redditStatus = 'Ready'; }, 3000);
                     }
+                    await this.fetchDevices(); // Refresh global state
                     if (refreshPreview) await this.loadRedditPreview();
                 }
             } catch (e) {

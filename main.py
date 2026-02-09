@@ -109,12 +109,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # --- Authentication Middleware & Logic ---
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     # Paths that don't require authentication
-    open_paths = ["/api/setup", "/api/display", "/api/bitmap", "/api/log", "/login"]
+    open_paths = ["/api/setup", "/api/display", "/api/bitmap", "/api/log", "/login", "/static"]
     
     # Check if path starts with any open paths
     is_open = any(request.url.path.startswith(p) for p in open_paths)
