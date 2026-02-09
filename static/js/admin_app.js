@@ -43,7 +43,8 @@ document.addEventListener('alpine:init', () => {
             cost_percent: 6,
             sharpen_amount: 0.2,
             dither_strength: 1.0,
-            auto_optimize: true
+            auto_optimize: true,
+            ai_prompt: ''
         },
         redditPreview: [],
         redditStatus: 'Ready',

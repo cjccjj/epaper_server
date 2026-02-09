@@ -254,7 +254,9 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         sharpen_amount = float(config.get("sharpen_amount", 0.0))
         auto_optimize = config.get("auto_optimize", False)
             
-        print(f"DEBUG: Starting Reddit refresh for {mac} (r/{subreddit}, {bit_depth}-bit, {width}x{height})")
+        print(f"\n[REDDIT FETCH] Starting for {mac}")
+        print(f"  Config: r/{subreddit}, {bit_depth}-bit, {width}x{height}")
+        print(f"  Options: clip={clip_pct}%, cost={cost_pct}%, gamma={apply_gamma}, auto_opt={auto_optimize}")
 
         # Mixed strategy: get Top/Day and Hot
         strategies = [
@@ -271,6 +273,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
         save_device_reddit_cache(mac, cache)
 
         existing_posts = {p["id"]: p for p in cache.get("posts", []) if isinstance(p, dict) and "id" in p}
+        print(f"  Cache: Found {len(existing_posts)} existing posts to potentially reuse.")
         
         # Filename counter per device
         clean_mac = mac.replace(":", "").lower()
@@ -292,20 +295,22 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                 s_type = strategy["type"]
                 
                 url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?t={time}"
+                print(f"\n  [STRATEGY: {label}] Fetching {url}")
                 
                 try:
                     response = await client.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=15.0)
                     if response.status_code != 200:
-                        print(f"  ERROR: Strategy {label} failed with status {response.status_code}")
+                        print(f"    ERROR: Strategy {label} failed with status {response.status_code}")
                         continue
                     
                     feed = feedparser.parse(response.content)
                     strategy_posts_added = 0
                     
-                    print(f"  DEBUG: Strategy {label} found {len(feed.entries)} entries")
+                    print(f"    Found {len(feed.entries)} entries in RSS feed.")
                     
                     for entry in feed.entries[:25]:
                         if strategy_posts_added >= target_count:
+                            print(f"    Target count ({target_count}) reached for {label}.")
                             break
                         
                         # Update progress
@@ -317,23 +322,24 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                         if not post_id or post_id in seen_ids:
                             continue
                         
+                        print(f"    --- Processing Post: {entry.title[:50]}... ---")
                         is_in_cache = post_id in existing_posts
                         
                         # Reuse existing if same config
                         if is_in_cache:
                             existing = existing_posts[post_id]
-                            # Check if the existing image matches current bit_depth and dimensions
-                            # For simplicity, if we change config, we re-process.
-                            # But if nothing changed, reuse.
                             if existing.get("bit_depth") == bit_depth and \
                                existing.get("width") == width and \
                                existing.get("height") == height and \
                                os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])):
                                 
+                                print(f"      REUSE: Existing image found in cache.")
                                 all_posts.append(existing)
                                 seen_ids.add(post_id)
                                 strategy_posts_added += 1
                                 continue
+                            else:
+                                print(f"      RE-PROCESS: Cache found but config changed ({existing.get('bit_depth')}nd vs {bit_depth}bd).")
 
                         # Process new image
                         content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
@@ -343,43 +349,47 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                         if img_matches:
                             img_url = img_matches[0].replace("&amp;", "&")
                         elif 'media_content' in entry:
-                            # Some feeds use media_content
                             img_url = entry.media_content[0]['url']
                         elif entry.link.endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                            # Sometimes the link itself is the image
                             img_url = entry.link
                             
                         if img_url:
-                            # Filter out tracking pixels or small icons if possible
                             if "out.reddit.com" in img_url or "pixel.redditmedia.com" in img_url:
+                                print(f"      SKIP: Tracking pixel or invalid URL.")
                                 continue
                                 
                             filename = f"reddit_{clean_mac}_{filename_counter}.png"
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
                             try:
-                                # Step 2: Download image as img_ori
+                                print(f"      Downloading: {img_url}")
                                 img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                                 if not img_ori:
+                                    print(f"      SKIP: Download failed.")
                                     continue
                                 
                                 # Step 3: Check ratio fit
                                 if not image_processor.check_ratio_fit(img_ori, target_size=(width, height)):
-                                    print(f"  SKIPPED: Ratio misfit for {img_url}")
+                                    print(f"      SKIP: Ratio misfit (Target {width}x{height}, Image {img_ori.width}x{img_ori.height})")
                                     continue
                                 
                                 # Step 5: AI analysis and Strategy
+                                print(f"      AI: Calling for style analysis...")
                                 img_for_ai = img_ori.copy()
                                 img_for_ai.thumbnail((512, 512), Image.Resampling.LANCZOS)
                                 
                                 ai_prompt = config.get("ai_prompt")
                                 ai_analysis = await reddit_ai.get_ai_analysis(img_for_ai, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
+                                print(f"      AI Response: {ai_analysis}")
+                                
                                 strategy = await reddit_ai.get_process_strategy(ai_analysis)
+                                print(f"      Strategy: {strategy}")
                                 
                                 # Inject user preference into analysis for display/processing
                                 ai_analysis["show_titles"] = show_titles
                                 
                                 # Step 6 & 7: Process from img_ori
+                                print(f"      Image Processing: Applying pipeline...")
                                 processed_img, debug_info = await asyncio.to_thread(
                                     image_processor.process_with_ai_strategy,
                                     img_ori,
@@ -394,6 +404,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 
                                 # Save processed image
                                 await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
+                                print(f"      SUCCESS: Saved to {filename}")
                                 
                                 all_posts.append({
                                     "id": post_id,
@@ -412,19 +423,18 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 strategy_posts_added += 1
                                 filename_counter += 1
                             except Exception as e:
-                                print(f"  SKIPPED: Image processing failed for {post_id}: {e}")
-                                import traceback
-                                traceback.print_exc()
+                                print(f"      ERROR: Image processing failed: {e}")
+                                # import traceback
+                                # traceback.print_exc()
                                 continue
                         else:
-                            # print(f"  DEBUG: No image found for {post_id}")
-                            pass
+                            print(f"      SKIP: No valid image found in entry.")
                 except Exception as e:
-                    print(f"ERROR: Strategy {label} failed: {e}")
+                    print(f"    ERROR: Strategy {label} failed: {e}")
                     continue
                             
         if not all_posts:
-            print(f"WARNING: No posts fetched for {mac}. Keeping old cache.")
+            print(f"\n[REDDIT FETCH] FAILED: No posts fetched for {mac}. Keeping old cache.")
             return
 
         # Update cache
@@ -445,7 +455,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
             except:
                 pass
 
-        print(f"Reddit cache updated for {mac}: {len(all_posts)} posts")
+        print(f"\n[REDDIT FETCH] COMPLETE: {len(all_posts)} posts stored in cache.")
         
     finally:
         if db_session is None:
