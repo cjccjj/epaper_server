@@ -1,11 +1,14 @@
 import ai_stylist
+import asyncio
 
 async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_prompt=None):
     """
     AI Interface: Analyzes image and post metadata using real AI.
     """
     # Use the real AI analysis from ai_stylist
-    style_obj = ai_stylist.analyze_image(
+    # Offload the synchronous network call to a thread to avoid blocking the event loop
+    style_obj = await asyncio.to_thread(
+        ai_stylist.analyze_image,
         img_url, 
         post_title=post_title, 
         post_url=post_url, 

@@ -338,15 +338,16 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             if existing.get("bit_depth") == bit_depth and \
                                existing.get("width") == width and \
                                existing.get("height") == height and \
-                               existing.get("ai_labels") and \
-                               os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])):
+                               existing.get("debug_ai") and \
+                               (existing.get("status") == "skip" or (existing.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, existing["filename"])))):
                                 
                                 print(f"      REUSE: Existing image found in cache.")
                                 if "status" not in existing:
                                     existing["status"] = "use"
                                 all_posts.append(existing)
                                 seen_ids.add(post_id)
-                                strategy_posts_added += 1
+                                if existing.get("status") != "skip":
+                                    strategy_posts_added += 1
                                 continue
                             else:
                                 reason = "config changed" if existing.get("bit_depth") != bit_depth else "missing AI labels"
@@ -389,6 +390,11 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 
                                 if final_decision == "skip":
                                     print(f"      DECISION: SKIP (AI={ai_decision}, Strategy={strategy_decision})")
+                                    
+                                    # Create concise AI summary
+                                    ai_summary = f"AI:{ai_analysis.get('decision', '?').upper()} {ai_analysis.get('post_purpose', '?')[:3]} tx:{ai_analysis.get('text_density', '?')[:1]} risk:{ai_analysis.get('aspect_ratio_risk', '?')[:1]} cp:{ai_analysis.get('crop_safety', '?')[:1]} sz:{ai_analysis.get('resize_strategy', '?')[:3]} goal:{ai_analysis.get('primary_goal', '?')[:3]} edge:{ai_analysis.get('edge_importance', '?')[:1]} grad:{ai_analysis.get('gradient_importance', '?')[:1]}"
+                                    code_summary = f"CODE:SKIP (Reason: {ai_decision if ai_decision == 'skip' else strategy_decision})"
+
                                     all_posts.append({
                                         "id": post_id,
                                         "title": entry.title,
@@ -397,14 +403,10 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                         "filename": None,
                                         "status": "skip",
                                         "strategy": label,
-                                        "ai_labels": {
-                                            "ai": ai_analysis,
-                                            "strategy": strategy,
-                                            "reason": "AI skip" if ai_decision == "skip" else "Strategy skip"
-                                        }
+                                        "debug_ai": ai_summary,
+                                        "debug_code": code_summary
                                     })
                                     seen_ids.add(post_id)
-                                    # We don't increment strategy_posts_added for skipped posts
                                     continue
                                 
                                 # Download only if we are using it
@@ -444,6 +446,14 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
                                 print(f"      SUCCESS: Saved to {filename}")
                                 
+                                # Create concise summaries for success case
+                                ai_summary = f"AI:USE {ai_analysis.get('post_purpose', '?')[:3]} tx:{ai_analysis.get('text_density', '?')[:1]} risk:{ai_analysis.get('aspect_ratio_risk', '?')[:1]} cp:{ai_analysis.get('crop_safety', '?')[:1]} sz:{ai_analysis.get('resize_strategy', '?')[:3]} goal:{ai_analysis.get('primary_goal', '?')[:3]} edge:{ai_analysis.get('edge_importance', '?')[:1]} grad:{ai_analysis.get('gradient_importance', '?')[:1]}"
+                                
+                                # Code summary with technical params
+                                code_summary = f"CODE:USE g{strategy.get('gamma', 1.0):.1f} s{strategy.get('sharpen', 0.0):.1f} d{int(strategy.get('dither_strength', 0.0)*100)}% {strategy.get('resize_method', '?')}"
+                                if strategy.get("max_stretch"):
+                                    code_summary += f" (str:{int(strategy['max_stretch']*100)}%)"
+
                                 all_posts.append({
                                     "id": post_id,
                                     "title": entry.title,
@@ -455,11 +465,8 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     "bit_depth": bit_depth,
                                     "width": width,
                                     "height": height,
-                                    "ai_labels": {
-                                        "ai": ai_analysis,
-                                        "strategy": strategy,
-                                        "process": debug_info
-                                    }
+                                    "debug_ai": ai_summary,
+                                    "debug_code": code_summary
                                 })
                                 
                                 seen_ids.add(post_id)
