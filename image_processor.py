@@ -221,8 +221,8 @@ def overlay_title(img, title, font_size=None, bold=False):
     line_h = bbox[3] - bbox[1]
     
     # dejavu_bold_outline style uses a 1px stroke for the outline effect
-    # We use stroke_width=1 for the main text as well if bold is True (simulated bold on top of bold font)
-    # But the user asked for "dejavu_bold_outline" style specifically.
+    # We use DejaVuSans-Bold as the base font, so bold=False is enough for a clean bold look.
+    # main_stroke=1 would create an "Extra Bold" effect.
     main_stroke = 1 if bold else 0
     
     for i, line in enumerate(reversed(lines)):

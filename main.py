@@ -236,7 +236,6 @@ DEFAULT_REDDIT_CONFIG = {
     "subreddit": "aww", 
     "sort": "top", 
     "time": "day", 
-    "bold_title": False,
     "bit_depth": 2,
     "width": 400,
     "height": 300,
