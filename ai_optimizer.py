@@ -183,8 +183,26 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
 async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_prompt=None):
     """
     AI Interface: Analyzes image and post metadata using real AI.
+    Now includes aspect ratio filtering before calling AI.
     """
     try:
+        # Step 1: Download image to check aspect ratio
+        import image_processor
+        img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
+        if not img_ori:
+            return {"decision": "skip", "reason": "Download failed"}
+            
+        # Step 2: Check aspect ratio (8:3 to 4:6)
+        # 8:3 = 2.666, 4:6 = 0.666
+        width, height = img_ori.size
+        ratio = width / height
+        
+        if ratio > (8/3):
+            return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > 2.67)"}
+        if ratio < (4/6):
+            return {"decision": "skip", "reason": f"Image too narrow (ratio {ratio:.2f} < 0.67)"}
+
+        # Step 3: Analyze with AI
         style_obj = await asyncio.to_thread(
             analyze_image,
             img_url, 
@@ -195,7 +213,11 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         )
         if style_obj.decision == "skip":
              return {"decision": "skip", "reason": "AI Decision: Skip"}
-        return style_obj.model_dump()
+             
+        # Step 4: Add image dimensions to the result for strategy calculation
+        result = style_obj.model_dump()
+        result["_img_size"] = (width, height)
+        return result
     except Exception as e:
         print(f"Error in get_ai_analysis for {post_title}: {e}")
         return {"decision": "skip", "reason": f"AI Error: {str(e)}"}
