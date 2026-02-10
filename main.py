@@ -330,10 +330,9 @@ def get_display(
     
     # Pick the dish to use for this request
     current_dish = "gallery"
-    if display_mode == "random":
-        import random
+    if display_mode == "random" and enabled_dishes:
         current_dish = random.choice(enabled_dishes)
-    else: # sequence
+    elif enabled_dishes: # sequence
         dish_idx = device.last_dish_index % len(enabled_dishes)
         current_dish = enabled_dishes[dish_idx]
         device.last_dish_index = (dish_idx + 1) % len(enabled_dishes)
@@ -345,20 +344,24 @@ def get_display(
         if images:
             idx = device.current_image_index % len(images)
             current_img = images[idx]
-            filename = current_img.filename
+            filename = current_img.filename or "placeholder.png"
             device.current_image_index = (idx + 1) % len(images)
     elif current_dish == "reddit":
         cache = load_device_reddit_cache(id)
         posts = cache.get("posts", [])
         if posts:
             idx = device.current_image_index % len(posts)
-            filename = posts[idx].get("filename", "placeholder.png")
+            filename = posts[idx].get("filename") or "placeholder.png"
             device.current_image_index = (device.current_image_index + 1) % len(posts)
     elif current_dish == "rss":
         # TODO: Implement Rss processed image cache and serving logic
         # For now, we fallback to placeholder or a generic image
         filename = "placeholder.png"
     
+    # Ensure filename is a string and not None
+    if not filename:
+        filename = "placeholder.png"
+        
     # Logic to ensure filename exists or fallback
     if not os.path.exists(os.path.join(BITMAP_DIR, filename)):
         print(f"Warning: File {filename} not found in {BITMAP_DIR}. Falling back to placeholder.")
