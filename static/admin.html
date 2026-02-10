@@ -296,7 +296,6 @@
 
         <!-- Reddit Dish Panel -->
         <div x-show="currentTab === 'reddit'" class="tab-content">
-            <h3>🤖 Reddit AI Automator</h3>
             <div class="config-container" style="max-width: 600px;">
                 <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
                     <div class="config-group">
@@ -329,20 +328,17 @@
                         </select>
                     </div>
                     <div class="config-group">
-                        <label class="compact-label" title="When enabled, AI will automatically decide if the post title should be rendered on the image.">AI Auto</label>
+                        <label class="compact-label">AI Auto</label>
                         <input type="checkbox" x-model="redditConfig.auto_optimize">
                     </div>
                 </div>
 
-                <div class="reddit-status-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div id="redditStatus" x-html="redditStatus" style="font-size: 11px; color: var(--text-dim);">Ready</div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn btn-sm btn-outline" @click="clearRedditCache()" style="color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); background: transparent; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer;">🗑️ Clear Cache</button>
+                <div class="reddit-status-row">
+                    <div id="redditStatus" x-html="redditStatus">Ready</div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-outline" @click="clearRedditCache()" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">🗑️ Clear Cache</button>
                         <template x-if="redditConfig.auto_optimize">
-                            <div style="color: #6366f1; font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 4px;">
-                                <span>✨ AI Logic Active</span>
-                                <span style="font-size: 9px; opacity: 0.8;">(AI decides Title Inclusion)</span>
-                            </div>
+                            <div style="color: #6366f1; font-size: 11px; align-self: center;">✨ AI Auto Enabled</div>
                         </template>
                     </div>
                 </div>
