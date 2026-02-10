@@ -596,16 +596,17 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
     device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
     if not device: raise HTTPException(status_code=404, detail="Device not found")
 
-    # Use the original filename or generate a new one, but keep the extension
-    # Actually, we should probably force .png extension if we expect PNGs
-    ext = os.path.splitext(file.filename)[1]
-    if not ext: ext = ".png" # Default to .png if no extension
+    contents = await file.read()
     
-    filename = f"gallery_{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
+    # Generate structured filename
+    # source1=gallery, source2=gallery, counter=current image count
+    filename = image_processor.generate_processed_filename(
+        "gallery", "gallery", mac, len(device.images), contents
+    )
     file_path = os.path.join(BITMAP_DIR, filename)
 
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(contents)
 
     new_img = database.DeviceImage(
         mac_address=mac,
@@ -630,13 +631,12 @@ def delete_image(image_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/admin/reddit/cache/{mac}")
 def clear_reddit_cache(mac: str):
-    """Clear Reddit cache and delete all associated images using prefix."""
-    clean_mac = mac.replace(":", "").lower()
-    prefix = f"reddit_{clean_mac}_"
+    """Clear Reddit cache and delete all associated images."""
+    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
     
-    # Delete files by prefix
+    # Delete files by pattern: reddit_source2_mac_counter_hash.png
     for f in os.listdir(BITMAP_DIR):
-        if f.startswith(prefix):
+        if f.startswith("reddit_") and f"_{clean_mac}_" in f:
             try: os.remove(os.path.join(BITMAP_DIR, f))
             except: pass
     
@@ -647,13 +647,12 @@ def clear_reddit_cache(mac: str):
 
 @app.delete("/admin/rss/cache/{mac}")
 def clear_rss_cache(mac: str):
-    """Clear RSS cache and delete all associated images using prefix."""
-    clean_mac = mac.replace(":", "").lower()
-    prefix = f"rss_{clean_mac}_"
+    """Clear RSS cache and delete all associated images."""
+    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
     
-    # Delete files by prefix
+    # Delete files by pattern: rss_source2_mac_counter_hash.png
     for f in os.listdir(BITMAP_DIR):
-        if f.startswith(prefix):
+        if f.startswith("rss_") and f"_{clean_mac}_" in f:
             try: os.remove(os.path.join(BITMAP_DIR, f))
             except: pass
     

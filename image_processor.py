@@ -3,11 +3,41 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import io
 import numpy as np
 import os
+import hashlib
+import re
 
 # --- Configuration ---
 OVERLAY_FONT_SIZE = 14  # Default font size for title overlay
 
 # --- Core Processing Functions ---
+
+def generate_processed_filename(source1, source2, mac, counter, img_data=None):
+    """
+    Generate a filename in the format: source1_source2_mac_counter_hash.png
+    - source1: e.g. 'gallery', 'reddit', 'rss'
+    - source2: e.g. 'gallery', 'aww', 'cnn.com'
+    - mac: mac address (will be cleaned)
+    - counter: integer or string, will be formatted to 4 digits
+    - img_data: bytes of the image to generate hash from. If None, hash will be '00000000'
+    """
+    # Clean inputs
+    s1 = re.sub(r'[^a-zA-Z0-9]', '', source1).lower()
+    s2 = re.sub(r'[^a-zA-Z0-9]', '', source2).lower()
+    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
+    
+    # Format counter to 4 digits
+    try:
+        cnt = f"{int(counter):04d}"
+    except:
+        cnt = str(counter).zfill(4)[:4]
+        
+    # Generate 8-char hash
+    if img_data:
+        h = hashlib.md5(img_data).hexdigest()[:8]
+    else:
+        h = "00000000"
+        
+    return f"{s1}_{s2}_{clean_mac}_{cnt}_{h}.png"
 
 def download_image_simple(url):
     """Download image from URL and return as PIL Image object."""
@@ -334,3 +364,20 @@ def save_as_png(img, path, bit_depth=1):
         palette_img.save(path, format="PNG", bits=2, optimize=True)
     else:
         img.save(path, format="PNG", optimize=True)
+
+def get_image_bytes(img, bit_depth=1):
+    """Return PNG bytes of the image for hashing."""
+    buf = io.BytesIO()
+    if bit_depth == 1:
+        img.convert("1").save(buf, format="PNG", optimize=True)
+    elif bit_depth == 2:
+        img = img.convert("L")
+        data = np.array(img)
+        indices = (np.round(data / 85.0)).astype(np.uint8)
+        palette_img = Image.fromarray(indices, mode='P')
+        palette = [0,0,0, 85,85,85, 170,170,170, 255,255,255] + [0]*(256*3 - 12)
+        palette_img.putpalette(palette)
+        palette_img.save(buf, format="PNG", bits=2, optimize=True)
+    else:
+        img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()

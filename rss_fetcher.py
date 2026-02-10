@@ -69,9 +69,10 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
     print(f"  Manual fetch: Clearing old cache and files for {mac}")
     
     # 1. Clear files from disk
-    clean_mac = mac.replace(":", "").lower()
+    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
+    prefix = f"reddit_{subreddit.lower()}_{clean_mac}_"
     for f in os.listdir(BITMAP_DIR):
-        if f.startswith(f"reddit_{clean_mac}_"):
+        if f.startswith(prefix):
             try:
                 os.remove(os.path.join(BITMAP_DIR, f))
             except:
@@ -139,9 +140,6 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             print(f"      SKIP: Tracking pixel or invalid URL.")
                             continue
                             
-                        filename = f"reddit_{clean_mac}_{filename_counter}.png"
-                        filepath = os.path.join(BITMAP_DIR, filename)
-                        
                         try:
                             # Step 5: AI Analysis (Returns strategy + image we already downloaded)
                             print(f"      AI Analysis: Fetching optimization strategy...")
@@ -244,6 +242,13 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 font_size=image_processor.OVERLAY_FONT_SIZE
                             )
                             
+                            # Generate structured filename
+                            img_bytes = await asyncio.to_thread(image_processor.get_image_bytes, processed_img, bit_depth=bit_depth)
+                            filename = image_processor.generate_processed_filename(
+                                "reddit", subreddit, mac, filename_counter, img_bytes
+                            )
+                            filepath = os.path.join(BITMAP_DIR, filename)
+
                             # Save processed image
                             await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
                             print(f"      SUCCESS: Saved to {filename}")

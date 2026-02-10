@@ -6,6 +6,7 @@ import asyncio
 import datetime
 import io
 from typing import List, Dict, Optional
+from urllib.parse import urlparse
 from PIL import Image
 import ai_optimizer
 import image_processor
@@ -114,9 +115,13 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
     save_cache_func(mac, cache)
     
     # 1. Clear old files
-    clean_mac = mac.replace(":", "").lower()
+    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
+    rss_domain = urlparse(rss_url).netloc.replace("www.", "")
+    rss_source2 = re.sub(r'[^a-zA-Z0-9]', '', rss_domain).lower() or "rss"
+    prefix = f"rss_{rss_source2}_{clean_mac}_"
+    
     for f in os.listdir(BITMAP_DIR):
-        if f.startswith(f"rss_{clean_mac}_"):
+        if f.startswith(prefix):
             try:
                 os.remove(os.path.join(BITMAP_DIR, f))
             except:
@@ -146,9 +151,6 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
 
         cache["progress"] = f"Processing item {i+1}/{len(items)}"
         save_cache_func(mac, cache)
-
-        filename = f"rss_{clean_mac}_{filename_counter}.png"
-        filepath = os.path.join(BITMAP_DIR, filename)
 
         try:
             print(f"      AI Analysis for: {item['title'][:50]}...")
@@ -184,6 +186,13 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
                 bit_depth=bit_depth
             )
             
+            # Generate structured filename
+            img_bytes = await asyncio.to_thread(image_processor.get_image_bytes, processed_img, bit_depth=bit_depth)
+            filename = image_processor.generate_processed_filename(
+                "rss", rss_source2, mac, filename_counter, img_bytes
+            )
+            filepath = os.path.join(BITMAP_DIR, filename)
+
             # Save
             await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
             
