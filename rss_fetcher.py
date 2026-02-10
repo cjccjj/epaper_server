@@ -25,7 +25,6 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
         
     config = device.reddit_config or {}
     subreddit = config.get("subreddit", "aww")
-    show_title = config.get("show_title", True)
     bit_depth = int(config.get("bit_depth", 1))
     
     # Use device-level display dimensions
@@ -221,7 +220,13 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             # we download it here.
                             img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                             
-                            print(f"      Image Processing: Applying pipeline...")
+                            # Determine if we should show the title
+                            # If auto_optimize is on, use AI decision. Otherwise, default to False (since we removed UI toggle)
+                            # Actually, maybe we should keep a default if not auto_optimizing? 
+                            # The user said "this will decide only by AI". 
+                            final_show_title = strategy.get("include_title", False) if auto_optimize else False
+
+                            print(f"      Image Processing: Applying pipeline (Title: {final_show_title})...")
                             processed_img = await asyncio.to_thread(
                                 image_processor.process_image_pipeline,
                                 img_ori,
@@ -231,11 +236,11 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 gamma=strategy.get("gamma", 1.0),
                                 sharpen=strategy.get("sharpen", 0.0),
                                 dither_strength=strategy.get("dither_strength", 1.0),
-                                title=entry.title if show_title else None,
+                                title=entry.title if final_show_title else None,
                                 bit_depth=bit_depth,
                                 clip_pct=clip_pct,
                                 cost_pct=cost_pct,
-                                font_size=12,
+                                font_size=image_processor.OVERLAY_FONT_SIZE,
                                 bold=config.get("bold_title", False)
                             )
                             

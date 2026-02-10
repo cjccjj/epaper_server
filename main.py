@@ -57,7 +57,7 @@ def load_device_reddit_cache(mac):
     return {
         "posts": [],
         "last_update": None,
-        "config": {"subreddit": "aww", "show_title": True}
+        "config": {"subreddit": "aww"}
     }
 
 def save_device_reddit_cache(mac, cache):
@@ -236,7 +236,6 @@ DEFAULT_REDDIT_CONFIG = {
     "subreddit": "aww", 
     "sort": "top", 
     "time": "day", 
-    "show_title": True,
     "bold_title": False,
     "bit_depth": 2,
     "width": 400,

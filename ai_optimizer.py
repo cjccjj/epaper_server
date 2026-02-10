@@ -36,6 +36,9 @@ class ImageRenderIntent(BaseModel):
     sharpen: float # 0.0 - 2.0
     dither: int    # 0 - 100
 
+    # 5. Title Overlay (Step 6 in prompt)
+    include_title: bool
+
 DEFAULT_SYSTEM_PROMPT = """
 You are an e‑paper image optimization assistant.
 
@@ -82,8 +85,8 @@ DECISION STEPS
 ────────────────────────
 
 0. Classification
-Use IMAGE CLASSIFICATION as guidence to help your analysis.
-include ONE Image STYLE and ONE POST PURPOSE in the output for debug purpose.
+Use IMAGE CLASSIFICATION as guidance for analysis.
+Include ONE Image STYLE and ONE POST PURPOSE in the output for debug purpose.
 
 1. Use or Skip the Image
 Skip the image if ANY of the following apply:
@@ -95,9 +98,9 @@ Skip the image if ANY of the following apply:
 Target is to maximize screen usage.
 
 Choose ONE:
-- Stretch: Allowed if it does not distort meaning or readability; helpful for humor or casual images
-- Crop: Crop unnecessary empty space or wide borders. High confidence only; never remove important subjects or text
-- Fit with padding: Keep aspect ratio; use when stretch or crop is unsafe
+- Stretch: For humor or casual images, even with text inside, stretching increases readability.
+- Crop: For artistic images, crop unless the main subject extends to the edge. For images with text inside, avoid cropping.
+- Fit with padding: Keep aspect ratio; use when stretch or crop is unsafe.
 
 If padding is used:
 - Choose background color: black or white
@@ -119,16 +122,24 @@ Purpose: enhance edges and text clarity (not tonal contrast).
 Guidelines:
 - Real‑world photography: usually ≤ 0.4
 - Text‑centric images, flat color comics, diagrams, line art: 1.0 – 2.0
-- Mixed content: 0.4 to 1.0 choose a balanced value
+- Mixed content: 0.4 – 1.0, choose a balanced value
 
 5. Dithering (range: 0 – 100)
 Purpose: simulate gradients on a 4‑level grayscale display.
 
 Guidelines:
-- High gradient content (photos, realism paintings): 70 – 100
-- Mid to low gradiant content (paintings, drawings): 50 - 70
-- Very Low gradient content (flat color comics, diagrams, UI, line art): 0 – 50
-- Lower dithering preserves stronger tonal contrast
+- High to mid gradient color‑rich content (photos without text, realism paintings): 80 – 100
+- Mid to low gradient content (photo with text, paintings, drawings): 50 – 80
+- No gradient content (flat color comics, diagrams, UI, line art): 0 – 40
+- Lower dithering preserves stronger tonal contrast but loses details
+
+6. Add Post Title Overlay (If Needed)
+Purpose: decide whether to place the Post Title near the bottom of the image for clarity.
+
+Guidelines:
+- Do not add if the image already contains text
+- Do not add if the image is self‑explanatory
+- Add if the image alone is unclear and the Post Title adds meaningful context
 
 ────────────────────────
 OUTPUT RULES
@@ -136,7 +147,6 @@ OUTPUT RULES
 
 - Return ONLY values allowed by the output schema
 - Do NOT explain reasoning
-- Do NOT include extra text
 """
 
 def analyze_image(image_input, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageRenderIntent:
@@ -191,7 +201,8 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
             resize_strategy="pad_white",
             gamma=1.0,
             sharpen=0.0,
-            dither=0
+            dither=0,
+            include_title=False
         )
 
 async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_prompt=None):
@@ -242,10 +253,17 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         if style_obj.decision == "skip":
              return {"decision": "skip", "reason": "AI Decision: Skip"}
              
-        # Step 4: Add image dimensions to the result for strategy calculation
-        result = style_obj.model_dump()
-        result["_img_size"] = (width, height)
-        return result
+        return {
+            "image_style": style_obj.image_style,
+            "post_purpose": style_obj.post_purpose,
+            "decision": style_obj.decision,
+            "resize_strategy": style_obj.resize_strategy,
+            "gamma": style_obj.gamma,
+            "sharpen": style_obj.sharpen,
+            "dither": style_obj.dither,
+            "include_title": style_obj.include_title,
+            "_img_size": (width, height)
+        }
     except Exception as e:
         print(f"Error in get_ai_analysis for {post_title}: {e}")
         return {"decision": "skip", "reason": f"AI Error: {str(e)}"}
@@ -338,9 +356,12 @@ def get_process_strategy(ai_output, img_size=None, target_res=None):
 
     return {
         "decision": "use",
+        "image_style": ai_output.get("image_style"),
+        "post_purpose": ai_output.get("post_purpose"),
         "resize_method": final_method,
         "padding_color": padding_color,
         "gamma": gamma,
         "sharpen": sharpen,
-        "dither_strength": dither_strength
+        "dither_strength": dither_strength,
+        "include_title": ai_output.get("include_title", False)
     }

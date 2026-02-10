@@ -36,7 +36,6 @@ document.addEventListener('alpine:init', () => {
         // Reddit State
         redditConfig: {
             subreddit: '',
-            show_title: true,
             bold_title: false,
             bit_depth: 2,
             gamma_index: 6,

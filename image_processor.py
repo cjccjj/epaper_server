@@ -4,6 +4,9 @@ import io
 import numpy as np
 import os
 
+# --- Configuration ---
+OVERLAY_FONT_SIZE = 12  # Default font size for title overlay
+
 # --- Helper Functions (Core Processing) ---
 
 def download_image_simple(url):
@@ -144,11 +147,14 @@ def apply_4g_fs(data, strength=1.0):
                     if x - 1 >= 0: out[y + 1, x - 1] += err * 1 / 16
     return np.clip(out, 0, 255).astype(np.uint8)
 
-def load_global_font(size=12):
+def load_global_font(size=None):
     """Load TTF font for text overlay."""
+    if size is None:
+        size = OVERLAY_FONT_SIZE
+        
     font_paths = [
-        "/home/cj/epaper_server/static/DejaVuSans-Bold.ttf",
-        "/home/cj/epaper_server/static/ntailu.ttf",
+        os.path.join(os.path.dirname(__file__), "static/DejaVuSans-Bold.ttf"),
+        os.path.join(os.path.dirname(__file__), "static/ntailu.ttf"),
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     ]
@@ -159,10 +165,13 @@ def load_global_font(size=12):
             continue
     return ImageFont.load_default()
 
-def overlay_title(img, title, font_size=12, bold=False):
+def overlay_title(img, title, font_size=None, bold=False):
     """Overlay title on the bottom of the image with outline, max 2 lines."""
     if not title: return img
     
+    if font_size is None:
+        font_size = OVERLAY_FONT_SIZE
+        
     # User preference: dejavu_bold_outline style
     # We use DejaVuSans-Bold and ensure it's centered with white outline.
     font = load_global_font(font_size)
@@ -235,7 +244,7 @@ def overlay_title(img, title, font_size=12, bold=False):
 
 def process_image_pipeline(img_ori, target_size, resize_method="padding", padding_color="white", 
                            gamma=1.0, sharpen=0.0, dither_strength=1.0, title=None, 
-                           bit_depth=1, clip_pct=22, cost_pct=6, font_size=12, bold=False):
+                           bit_depth=1, clip_pct=22, cost_pct=6, font_size=None, bold=False):
     """
     Main pipeline: Processes an image using explicit technical parameters.
     This is a pure execution layer; all decisions are made by ai_optimizer.py.
