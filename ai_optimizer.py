@@ -12,9 +12,9 @@ client = OpenAI()
 
 # --- Thresholds & Constraints ---
 # These define when we skip images or choose specific resize methods
-CROP_THRESHOLD = 0.3    # Max 20% crop allowed
+CROP_THRESHOLD = 0.5    # Max 20% crop allowed
 STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed
-PAD_THRESHOLD = 0.4     # Max 35% padding allowed before skipping
+PAD_THRESHOLD = 0.5     # Max 35% padding allowed before skipping
 
 class ImageRenderIntent(BaseModel):
     # 1. Classification (Step 0 in prompt)
@@ -209,20 +209,21 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         # Step 2: Check side length and aspect ratio
         width, height = img_ori.size
         
-        # Side length filter: any side < 250px is too small
-        if width < 250 or height < 250:
-            return {"decision": "skip", "reason": f"Image too small ({width}x{height} < 250px)"}
+        tw, th = target_resolution
+        
+        # Relative side length filter: skip if < 50% of target width or height
+        if width < tw * 0.5 or height < th * 0.5:
+            return {"decision": "skip", "reason": f"Image too small ({width}x{height} < 50% of {tw}x{th})"}
 
         ratio = width / height
-        
-        tw, th = target_resolution
         target_ar = tw / th
         
-        # Calculate limits based on PAD_THRESHOLD
-        # Max AR: target_ar / (1 - PAD_THRESHOLD)
-        # Min AR: target_ar * (1 - PAD_THRESHOLD)
-        max_ar = target_ar / (1 - PAD_THRESHOLD)
-        min_ar = target_ar * (1 - PAD_THRESHOLD)
+        # Ratio filter: choose max from thresholds to use as the filter limit
+        MAX_THRESHOLD = max(CROP_THRESHOLD, STRETCH_THRESHOLD, PAD_THRESHOLD)
+        
+        # Calculate limits based on the maximum allowed threshold
+        max_ar = target_ar / (1 - MAX_THRESHOLD)
+        min_ar = target_ar * (1 - MAX_THRESHOLD)
         
         if ratio > max_ar:
             return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > {max_ar:.2f})"}

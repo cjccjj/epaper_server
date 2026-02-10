@@ -119,10 +119,15 @@ document.addEventListener('alpine:init', () => {
         async saveDeviceSettings() {
             if (!this.currentMac) return;
             try {
+                // Include both device settings and reddit config to be safe
+                const payload = { 
+                    ...this.deviceSettings,
+                    reddit_config: this.redditConfig 
+                };
                 await fetch(`/admin/device/${this.currentMac}/settings`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(this.deviceSettings)
+                    body: JSON.stringify(payload)
                 });
                 await this.fetchDevices(); // Refresh list
             } catch (e) {
