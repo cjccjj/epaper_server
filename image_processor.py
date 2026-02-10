@@ -440,8 +440,25 @@ def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, res
     ai_labels = None
     # 2. AI Optimization (if requested)
     if auto_optimize:
-        style = ai_stylist.analyze_image(img)
-        ai_labels = style.model_dump() if style else None
+        try:
+            style = ai_stylist.analyze_image(img)
+            ai_labels = style.model_dump() if style else None
+        except Exception as e:
+            print(f"Error in Gallery AI analysis: {e}")
+            # Fallback to a safe default object if AI fails
+            ai_labels = {
+                "decision": "use",
+                "image_style": "photography",
+                "post_purpose": "others",
+                "resize_strategy": "pad_white",
+                "gamma": 1.0,
+                "sharpen": 0.5,
+                "dither": 50
+            }
+            # Create a mock style object for the rest of the logic
+            from ai_stylist import ImageRenderIntent
+            style = ImageRenderIntent(**ai_labels)
+        
         print(f"AI Optimization labels: {ai_labels}")
         
         # Mapping labels to parameters

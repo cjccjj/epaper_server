@@ -362,42 +362,29 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
                             try:
-                                # Step 5: AI analysis and Strategy
+                                # Step 5: AI analysis
                                 print(f"      AI: Calling for style analysis...")
                                 
                                 ai_prompt = config.get("ai_prompt")
                                 ai_analysis = await reddit_ai.get_ai_analysis(img_url, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
                                 print(f"      AI Response: {ai_analysis}")
                                 
-                                # Check AI decision early
-                                ai_decision = ai_analysis.get("decision", "use")
-                                strategy = await reddit_ai.get_process_strategy(ai_analysis)
-                                strategy_decision = strategy.get("decision", "use")
-                                
-                                final_decision = "skip" if ai_decision == "skip" or strategy_decision == "skip" else "use"
-                                
-                                # Format Readable AI Summary - Full 13 items
+                                # Format Readable AI Summary - 7 fields
                                 ai_parts = [
                                     f"[{ai_analysis.get('decision', 'USE').upper()}]",
-                                    f"Type:{ai_analysis.get('post_purpose', '?')}",
-                                    f"Layout:{ai_analysis.get('layout_complexity', '?')}",
-                                    f"Txt:{ai_analysis.get('text_density', '?')}",
+                                    f"Sty:{ai_analysis.get('image_style', '?')}",
+                                    f"Purp:{ai_analysis.get('post_purpose', '?')}",
                                     f"Resz:{ai_analysis.get('resize_strategy', '?')}",
-                                    f"Strtch:{ai_analysis.get('stretch_tolerance', '?')}",
-                                    f"Crop:{ai_analysis.get('crop_safety', '?')}",
-                                    f"Pad:{ai_analysis.get('padding_color', '?')}",
-                                    f"Goal:{ai_analysis.get('primary_goal', '?')}",
-                                    f"Edge:{ai_analysis.get('edge_importance', '?')}",
-                                    f"Grad:{ai_analysis.get('gradient_importance', '?')}",
-                                    f"AR:{ai_analysis.get('aspect_ratio_risk', '?')}",
-                                    f"Conf:{ai_analysis.get('confidence', 0):.2f}"
+                                    f"Gam:{ai_analysis.get('gamma', 1.0):.1f}",
+                                    f"Sharp:{ai_analysis.get('sharpen', 0.0):.1f}",
+                                    f"Dith:{ai_analysis.get('dither', 0)}%"
                                 ]
                                 ai_summary = "AI: " + " | ".join(ai_parts)
 
-                                if final_decision == "skip":
-                                    print(f"      DECISION: SKIP (AI={ai_decision}, Strategy={strategy_decision})")
-                                    code_summary = f"CODE: [SKIP] | Reason: {ai_decision if ai_decision == 'skip' else strategy_decision}"
-
+                                # Check AI decision early
+                                if ai_analysis.get("decision") == "skip":
+                                    print(f"      DECISION: SKIP (AI said skip)")
+                                    code_summary = "CODE: [SKIP] | Reason: AI decision"
                                     all_posts.append({
                                         "id": post_id,
                                         "title": entry.title,
@@ -412,31 +399,51 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     # Incremental Save
                                     cache["posts"] = all_posts
                                     save_device_reddit_cache(mac, cache)
-                                    
                                     seen_ids.add(post_id)
                                     continue
-                                
-                                # Download only if we are using it
+
+                                # Step 6: Download image to get dimensions for strategy check
                                 print(f"      Downloading: {img_url}")
                                 img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                                 if not img_ori:
                                     print(f"      SKIP: Download failed.")
                                     continue
                                 
-                                # Apply AI strategy if auto_optimize is ON, otherwise use manual settings
-                                if auto_optimize:
-                                    print(f"      Strategy: Using AI decision.")
-                                else:
-                                    print(f"      Strategy: Overriding AI with MANUAL settings (gamma={manual_gamma}, sharpen={sharpen_amount}, dither={dither_strength}).")
+                                # Step 7: Get technical strategy (with threshold checks)
+                                strategy = await reddit_ai.get_process_strategy(ai_analysis, img_size=img_ori.size, target_res=(width, height))
+                                
+                                if strategy.get("decision") == "skip":
+                                    print(f"      DECISION: SKIP (Strategy thresholds failed)")
+                                    code_summary = "CODE: [SKIP] | Reason: Thresholds"
+                                    all_posts.append({
+                                        "id": post_id,
+                                        "title": entry.title,
+                                        "url": entry.link,
+                                        "img_url": img_url,
+                                        "filename": None,
+                                        "status": "skip",
+                                        "strategy": label,
+                                        "debug_ai": ai_summary,
+                                        "debug_code": code_summary
+                                    })
+                                    # Incremental Save
+                                    cache["posts"] = all_posts
+                                    save_device_reddit_cache(mac, cache)
+                                    seen_ids.add(post_id)
+                                    continue
+
+                                # Apply manual overrides if auto_optimize is OFF
+                                if not auto_optimize:
+                                    print(f"      Strategy: Overriding AI with MANUAL settings.")
                                     strategy["gamma"] = manual_gamma
                                     strategy["sharpen"] = sharpen_amount
                                     strategy["dither_strength"] = dither_strength
                                 
-                                # Inject user preference into analysis for display/processing
+                                # Inject metadata for processor
                                 ai_analysis["show_titles"] = show_titles
                                 
-                                # Step 6 & 7: Process from img_ori
-                                print(f"      Image Processing: Applying pipeline (gamma={strategy['gamma']}, sharpen={strategy['sharpen']}, dither={strategy['dither_strength']})...")
+                                # Step 8: Final Processing
+                                print(f"      Image Processing: Applying pipeline...")
                                 processed_img, debug_info = await asyncio.to_thread(
                                     image_processor.process_with_ai_strategy,
                                     img_ori,

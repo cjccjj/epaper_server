@@ -7,117 +7,111 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
     """
     # Use the real AI analysis from ai_stylist
     # Offload the synchronous network call to a thread to avoid blocking the event loop
-    style_obj = await asyncio.to_thread(
-        ai_stylist.analyze_image,
-        img_url, 
-        post_title=post_title, 
-        post_url=post_url, 
-        target_resolution=target_resolution,
-        custom_prompt=ai_prompt
-    )
-    
-    # Convert Pydantic object to dict for easier use in main pipeline
-    return style_obj.model_dump()
+    try:
+        style_obj = await asyncio.to_thread(
+            ai_stylist.analyze_image,
+            img_url, 
+            post_title=post_title, 
+            post_url=post_url, 
+            target_resolution=target_resolution,
+            custom_prompt=ai_prompt
+        )
+        # Convert Pydantic object to dict for easier use in main pipeline
+        return style_obj.model_dump()
+    except Exception as e:
+        print(f"Error in AI analysis for {post_title}: {e}")
+        # Higher-level fallback for Reddit
+        return {
+            "decision": "use",
+            "image_style": "photography",
+            "post_purpose": "others",
+            "resize_strategy": "pad_white",
+            "gamma": 1.0,
+            "sharpen": 0.5,
+            "dither": 50
+        }
 
-async def get_process_strategy(ai_output):
+async def get_process_strategy(ai_output, img_size=None, target_res=None):
     """
     Process Strategy Interface: Converts AI analysis into technical parameters.
     Input: 
         ai_output (dict): Output from get_ai_analysis (ImageRenderIntent schema)
+        img_size (tuple): (width, height) of original image
+        target_res (tuple): (width, height) of target display
     Output:
         dict: Technical processing parameters
     """
-    # Hard drop rules - Relaxed: if AI says USE, we try to accommodate.
+    # 1. Decision from AI
     if ai_output.get("decision") == "skip":
         return {"decision": "skip"}
     
-    # Instead of skipping high aspect ratio risk with text, we force PADDING to ensure no crop/distortion
-    force_padding = False
-    if ai_output.get("aspect_ratio_risk") == "high" and ai_output.get("text_density") in ["medium", "high"]:
-        print(f"      STRATEGY: High AR risk + Text detected. Forcing PADDING to preserve content.")
-        force_padding = True
+    # Thresholds
+    CROP_THRESHOLD = 0.12
+    STRETCH_THRESHOLD = 0.3
 
-    # Stretch limits (mapping from AI design.md)
-    STRETCH_LIMITS = {
-        "none": 0.0,
-        "low": 0.10,
-        "medium": 0.20,
-        "high": 0.30
-    }
+    # Default values for processing
+    gamma = ai_output.get("gamma", 1.0)
+    sharpen = ai_output.get("sharpen", 0.5)
+    dither_strength = ai_output.get("dither", 50) / 100.0
 
-    # Gamma Correction Mapping
-    GAMMA_BASE = {
-        "low": 1.1,
-        "medium": 1.0,
-        "high": 0.9
-    }
-    
-    gradient_importance = ai_output.get("gradient_importance", "medium")
-    gamma = GAMMA_BASE.get(gradient_importance, 1.0)
-    # Note: clamp is handled in image_processor or here if needed. 
-    # For now we use the mapped values.
+    # Range checks
+    if not (1.0 <= gamma <= 2.4): gamma = 1.0
+    if not (0.0 <= sharpen <= 2.0): sharpen = 0.5
+    if not (0 <= ai_output.get("dither", 50) <= 100): dither_strength = 0.5
 
-    # Sharpening Mapping
-    SHARPEN = {
-        "low": 0.3,
-        "medium": 0.8,
-        "high": 1.4
-    }
-    
-    edge_importance = ai_output.get("edge_importance", "medium")
-    sharpen = SHARPEN.get(edge_importance, 0.8)
-    
-    primary_goal = ai_output.get("primary_goal", "shape_clarity")
-    if primary_goal == "text_readability":
-        sharpen += 0.2
-    elif primary_goal == "photo_realism":
-        sharpen = min(sharpen, 0.6)
-    
-    # Dithering Mapping
-    DITHER = {
-        "low": 20,
-        "medium": 50,
-        "high": 85
-    }
-    
-    dither_val = DITHER.get(gradient_importance, 50)
-    if primary_goal in ["text_readability", "shape_clarity"]:
-        dither_val = min(dither_val, 30)
-    
-    # Convert dither (0-100) to dither_strength (0.0-1.0) for existing processor
-    dither_strength = dither_val / 100.0
+    strategy = ai_output.get("resize_strategy", "pad_white")
+    final_method = "padding"
+    padding_color = "white"
 
-    # Resize Strategy Mapping
-    resize_strategy = ai_output.get("resize_strategy", "fill_prefer_stretch")
-    stretch_tolerance = ai_output.get("stretch_tolerance", "low")
-    max_stretch = STRETCH_LIMITS.get(stretch_tolerance, 0.10)
-    crop_safety = ai_output.get("crop_safety", "risky")
-    
-    final_resize_method = "crop" # Default
-    final_max_stretch = 0.0
+    # If we have image size, we check thresholds for crop/stretch
+    if img_size and target_res:
+        w, h = img_size
+        tw, th = target_res
+        img_ar = w / h
+        target_ar = tw / th
 
-    if force_padding:
-        final_resize_method = "padding"
-    elif resize_strategy == "fill_prefer_stretch":
-        final_resize_method = "stretch"
-        final_max_stretch = max_stretch
-    elif resize_strategy == "fill_crop_if_safe":
-        if crop_safety == "safe":
-            final_resize_method = "crop"
-        else:
-            final_resize_method = "stretch"
-            final_max_stretch = max_stretch
-    else: # fit_with_padding
-        final_resize_method = "padding"
+        if strategy == "crop":
+            # Calculate how much we need to crop
+            if img_ar > target_ar: # Wider than target, crop width
+                crop_amt = (w - h * target_ar) / w
+            else: # Taller than target, crop height
+                crop_amt = (h - w / target_ar) / h
+            
+            if crop_amt <= CROP_THRESHOLD:
+                final_method = "crop"
+            else:
+                print(f"      STRATEGY: Crop too aggressive ({crop_amt:.2%}). Skipping.")
+                return {"decision": "skip"}
 
-    print(f"      STRATEGY DECISION: {primary_goal} | Resize: {final_resize_method} (stretch={final_max_stretch}) | Gamma: {gamma} | Sharpen: {sharpen} | Dither: {dither_strength}")
+        elif strategy == "stretch":
+            # Calculate distortion
+            stretch_amt = abs(img_ar / target_ar - 1)
+            if stretch_amt <= STRETCH_THRESHOLD:
+                final_method = "stretch"
+                # For our processor, "stretch" is actually "stretch" method 
+                # but we need to pass the stretch amount if it's handled by stretch_to_fit
+            else:
+                print(f"      STRATEGY: Stretch too aggressive ({stretch_amt:.2%}). Skipping.")
+                return {"decision": "skip"}
+        
+        elif strategy == "pad_white":
+            final_method = "padding"
+            padding_color = "white"
+        elif strategy == "pad_black":
+            final_method = "padding"
+            padding_color = "black"
+    else:
+        # No image size yet (shouldn't happen with new flow), fallback to pad
+        if strategy == "stretch": final_method = "stretch"
+        elif strategy == "crop": final_method = "crop"
+        elif strategy == "pad_black": padding_color = "black"
+        else: padding_color = "white"
 
     return {
         "decision": "use",
-        "resize_method": final_resize_method,
-        "max_stretch": final_max_stretch,
+        "resize_method": final_method,
+        "padding_color": padding_color,
         "gamma": gamma,
         "sharpen": sharpen,
-        "dither_strength": dither_strength,
-        "padding_color": ai_output.get("padding_color", "auto")
+        "dither_strength": dither_strength
     }

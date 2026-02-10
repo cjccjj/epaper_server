@@ -11,143 +11,125 @@ from typing import Literal
 client = OpenAI()
 
 class ImageRenderIntent(BaseModel):
-    # Overall decision
+    # 1. Classification (Step 0 in prompt)
+    image_style: Literal[
+        "photography", "screenshot", "meme", "illustration", "comic", "diagram", "mixed"
+    ]
+    post_purpose: Literal[
+        "humor", "informational", "artistic", "showcase", "social", "reaction", "others"
+    ]
+
+    # 2. Decision
     decision: Literal["use", "skip"]
 
-    # Understanding
-    post_purpose: Literal[
-        "humor",          # memes, jokes
-        "informational",  # charts, guides, screenshots
-        "artistic",       # photography, illustration
-        "showcase",       # cosplay, products, fashion
-        "social",         # tweets, conversations
-        "reaction",       # funny moments, expressions
-        "unclear"
-    ]
+    # 3. Resize Strategy (Step 2 in prompt)
+    resize_strategy: Literal["stretch", "crop", "pad_white", "pad_black"]
 
-    # Layout understanding
-    layout_complexity: Literal["single", "multi_panel"]
-    text_density: Literal["none", "low", "medium", "high"]
+    # 4. Processing Parameters (Steps 3, 4, 5 in prompt)
+    gamma: float   # 1.0 - 2.4
+    sharpen: float # 0.0 - 2.0
+    dither: int    # 0 - 100
 
-    # Resize intent
-    resize_strategy: Literal[
-        "fill_prefer_stretch",
-        "fill_crop_if_safe",
-        "fit_with_padding"
-    ]
+DEFAULT_SYSTEM_PROMPT = """
+You are an e‑paper image optimization assistant.
 
-    stretch_tolerance: Literal[
-        "none",
-        "low",     # ~10%
-        "medium",  # ~20%
-        "high"     # ~30%
-    ]
+Target display:
+- Small 4.2‑inch, 400×300, 2‑bit grayscale e‑paper screen (4 gray levels)
+- Limited contrast
 
-    crop_safety: Literal[
-        "forbidden",
-        "risky",
-        "safe"
-    ]
+Your task:
+Analyze the image content, visible text inside the image, the Post Title, and the Post URL.
+Determine how the image should be processed to maximize readability and meaning on the target display.
 
-    padding_color: Literal[
-        "auto",
-        "white",
-        "black"
-    ]
+You must think like a human viewer reading this on a small e‑paper screen.
 
-    # Visual priorities
-    primary_goal: Literal[
-        "text_readability",
-        "shape_clarity",
-        "photo_realism",
-        "artistic_tone"
-    ]
+────────────────────────
+IMAGE CLASSIFICATION
+────────────────────────
 
-    edge_importance: Literal["low", "medium", "high"]
-    gradient_importance: Literal["low", "medium", "high"]
+Image STYLE:
+- Real‑World Photography
+- Screenshots / Digital Captures
+- Memes / Image Macros
+- Illustration / Digital Art
+- Comics / Cartoons / Line Art
+- Data / Diagrams / Infographics
+- Mixed / others
 
-    # Risk assessment
-    aspect_ratio_risk: Literal["low", "medium", "high"]
+POST PURPOSE:
+- Humor
+- Informational
+- Artistic
+- Showcase
+- Social (tweets, conversations)
+- Reaction
+- Others
 
-    confidence: float  # 0.0 – 1.0
+Text inside image:
+- Overlay text above, below, or on the image is usually critical and must be preserved
+- Small watermarks or footers do NOT count as important text
 
-DEFAULT_SYSTEM_PROMPT = """You are an e-paper image editor for a Reddit image digest.
+Image STYLE + POST PURPOSE together determine what must survive on a small grayscale display and how aggressively the image can be processed.
 
-The target display is a small 400×300, 2-bit grayscale (4 gray levels) e-paper screen.
-This is a quick-glance digest, not a full reader.
+────────────────────────
+DECISION STEPS
+────────────────────────
 
-Your task is to analyze:
-- the image itself (primary and decisive),
-- visible text inside the image,
-- the post title and subreddit (supporting context only),
+0. Classification
+Use IMAGE CLASSIFICATION as guidence to help your analysis.
+include ONE Image STYLE and ONE POST PURPOSE in the output for debug purpose.
 
-and determine how the image should be rendered to preserve its main meaning.
+1. Use or Skip the Image
+Skip the image if ANY of the following apply:
+- Too wide or too tall aspect ratio
+- Contains a large amount of tiny text (more than ~50 words)
+- Information density is too high to be readable on a small screen
 
-────────────────────────────
-PERCEPTION PRIORITY (IMPORTANT)
-────────────────────────────
-1. What is visible in the image is always decisive.
-2. Text visible inside the image is often the main meaning.
-3. Image style and structure matter.
-4. The post title explains intent but may be misleading.
-5. The subreddit provides weak contextual bias only.
+2. Resize Strategy
+Target is to maximize screen usage.
 
-Always trust the image over metadata.
+Choose ONE:
+- Stretch: Allowed if it does not distort meaning or readability; helpful for humor or casual images
+- Crop: Crop unnecessary empty space or wide borders. High confidence only; never remove important subjects or text
+- Fit with padding: Keep aspect ratio; use when stretch or crop is unsafe
 
-────────────────────────────
-REDDIT CONTEXT & PURPOSE
-────────────────────────────
-Reddit images are posted for a purpose.
+If padding is used:
+- Choose background color: black or white
+- If uncertain, choose white
 
-Common purposes include:
-- humor (memes, jokes)
-- informational (charts, guides, screenshots)
-- artistic (photography, illustrations)
-- showcase (cosplay, fashion, objects)
-- social (tweets, conversations)
-- reaction (expressive moments)
+3. Gamma Correction (range: 1.0 – 2.4)
+Purpose: recover shadow detail lost on 2‑bit grayscale displays.
 
-The purpose determines what must survive on a small grayscale display.
+Guidelines:
+- 1.0 = no correction
+- Higher values brighten shadows but reduce highlight detail
+- Real‑world photography: usually ≤ 1.4
+- Comics, charts, line art, UI screenshots: can be higher
+- Images with rich shadows benefit more from gamma correction
 
-────────────────────────────
-DISPLAY BIAS (VERY IMPORTANT)
-────────────────────────────
-- Filling the screen is usually better than preserving exact proportions.
-- Mild stretching is acceptable and often preferred over padding:
-  - Up to ~30% stretch is acceptable for memes and text-heavy images.
-  - Up to ~10% stretch is acceptable for photos.
-- Cropping is dangerous and should only be suggested if you are confident that
-  no important content (especially text) will be lost.
-- If the image contains readable text, cropping should generally be forbidden.
-- Padding is safe but visually undesirable and should be a last resort.
-- High contrast and clear edges often read better than subtle shading on e-paper.
+4. Sharpening (range: 0.0 – 2.0)
+Purpose: enhance edges and text clarity (not tonal contrast).
 
-It is acceptable to lose minor detail.
-It is unacceptable to lose the main joke, message, or subject.
+Guidelines:
+- Real‑world photography: usually ≤ 0.4
+- Text‑centric images, comics, diagrams, line art: 1.0 – 2.0
+- Mixed content: choose based on what is most important to read
 
-────────────────────────────
-HOW TO JUDGE IMAGES
-────────────────────────────
-Think like a human Reddit reader:
+5. Dithering (range: 0 – 100)
+Purpose: simulate gradients on a 4‑level grayscale display.
 
-- For memes and screenshots, text usually carries the meaning.
-- For reaction images, the expression or moment matters.
-- For photography or art, subject clarity and tonal balance matter.
-- For informational graphics, legibility matters more than aesthetics.
+Guidelines:
+- High gradient content (photos, skies, soft shading): 70 – 100
+- Low gradient content (comics, diagrams, UI, line art): 0 – 50
+- Lower dithering preserves stronger tonal contrast
 
-Ask yourself:
-“What must a viewer understand in 2 seconds for this image to work?”
+────────────────────────
+OUTPUT RULES
+────────────────────────
 
-────────────────────────────
-DECISION RULES
-────────────────────────────
-- Use "skip" if the image is too small, extremely blurry, has unreadable tiny text,
-  extreme aspect ratio, tracking pixels, or no practical way to show meaningfully
-  on a 400×300 screen.
-- Otherwise, use "use" and provide a rendering intent.
-
-Return ONLY values allowed by the output schema.
-Do not explain your reasoning.
+- Return ONLY values allowed by the output schema
+- Do NOT explain reasoning
+- Do NOT include extra text
 """
 
 def analyze_image(image_input, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageRenderIntent:
@@ -156,30 +138,12 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
     """
     system_prompt = custom_prompt if custom_prompt else DEFAULT_SYSTEM_PROMPT
     
-    if not os.getenv("OPENAI_API_KEY"):
-        # Fallback if no API key is provided
-        return ImageRenderIntent(
-            decision="use",
-            post_purpose="unclear",
-            layout_complexity="single",
-            text_density="none",
-            resize_strategy="fill_prefer_stretch",
-            stretch_tolerance="low",
-            crop_safety="safe",
-            padding_color="auto",
-            primary_goal="shape_clarity",
-            edge_importance="medium",
-            gradient_importance="medium",
-            aspect_ratio_risk="low",
-            confidence=0.5
-        )
-
     # Handle image input
     if isinstance(image_input, str):
-        # It's a URL
+        # It's a URL (Reddit use case)
         image_url_str = image_input
     else:
-        # It's a PIL Image, convert to base64
+        # It's a PIL Image (Gallery AI use case), convert to base64
         buffered = BytesIO()
         image_input.save(buffered, format="JPEG", quality=85)
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -194,27 +158,15 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
         },
     ]
 
-    try:
-        response = client.responses.parse(
-            model="gpt-5-mini",
-            instructions=system_prompt,
-            input=[
-                {
-                    "role": "user",
-                    "content": user_content,
-                }
-            ],
-            text_format=ImageRenderIntent,
-        )
-        return response.output_parsed
-    except Exception as e:
-        print(f"Error calling AI Stylist: {e}")
-        # Fallback to safe defaults
-        return ImageStyle(
-            decision="use",
-            content_type="Others",
-            has_text_overlay=False,
-            gradient_complexity="high",
-            contrast_priority="detail",
-            resize_method="crop"
-        )
+    response = client.responses.parse(
+        model="gpt-4o-mini", # Use 4o-mini as it's reliable for vision
+        instructions=system_prompt,
+        input=[
+            {
+                "role": "user",
+                "content": user_content,
+            }
+        ],
+        text_format=ImageRenderIntent,
+    )
+    return response.output_parsed
