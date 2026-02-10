@@ -165,7 +165,7 @@ def load_global_font(size=None):
             continue
     return ImageFont.load_default()
 
-def overlay_title(img, title, font_size=None, bold=False):
+def overlay_title(img, title, font_size=None):
     """Overlay title on the bottom of the image with outline, max 2 lines."""
     if not title: return img
     
@@ -221,9 +221,8 @@ def overlay_title(img, title, font_size=None, bold=False):
     line_h = bbox[3] - bbox[1]
     
     # dejavu_bold_outline style uses a 1px stroke for the outline effect
-    # We use DejaVuSans-Bold as the base font, so bold=False is enough for a clean bold look.
-    # main_stroke=1 would create an "Extra Bold" effect.
-    main_stroke = 1 if bold else 0
+    # We use DejaVuSans-Bold as the base font, which gives a clean bold look.
+    main_stroke = 0
     
     for i, line in enumerate(reversed(lines)):
         text_bbox = draw.textbbox((0, 0), line, font=font, stroke_width=main_stroke)
@@ -244,7 +243,7 @@ def overlay_title(img, title, font_size=None, bold=False):
 
 def process_image_pipeline(img_ori, target_size, resize_method="padding", padding_color="white", 
                            gamma=1.0, sharpen=0.0, dither_strength=1.0, title=None, 
-                           bit_depth=1, clip_pct=22, cost_pct=6, font_size=None, bold=False):
+                           bit_depth=1, clip_pct=22, cost_pct=6, font_size=None):
     """
     Main pipeline: Processes an image using explicit technical parameters.
     This is a pure execution layer; all decisions are made by ai_optimizer.py.
@@ -291,7 +290,7 @@ def process_image_pipeline(img_ori, target_size, resize_method="padding", paddin
     # 5. Text Overlay
     if title:
         out_img = out_img.convert("L")
-        out_img = overlay_title(out_img, title, font_size=font_size, bold=bold)
+        out_img = overlay_title(out_img, title, font_size=font_size)
         if bit_depth == 1:
             out_img = out_img.convert("1")
             

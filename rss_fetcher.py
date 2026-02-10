@@ -240,8 +240,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 bit_depth=bit_depth,
                                 clip_pct=clip_pct,
                                 cost_pct=cost_pct,
-                                font_size=image_processor.OVERLAY_FONT_SIZE,
-                                bold=False
+                                font_size=image_processor.OVERLAY_FONT_SIZE
                             )
                             
                             # Save processed image
