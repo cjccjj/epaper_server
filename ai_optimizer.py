@@ -12,9 +12,9 @@ client = OpenAI()
 
 # --- Thresholds & Constraints ---
 # These define when we skip images or choose specific resize methods
-CROP_THRESHOLD = 0.12    # Max 12% crop allowed
+CROP_THRESHOLD = 0.3    # Max 20% crop allowed
 STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed
-PAD_THRESHOLD = 0.35     # Max 35% padding allowed before skipping
+PAD_THRESHOLD = 0.4     # Max 35% padding allowed before skipping
 
 class ImageRenderIntent(BaseModel):
     # 1. Classification (Step 0 in prompt)
@@ -206,8 +206,13 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         if not img_ori:
             return {"decision": "skip", "reason": "Download failed"}
             
-        # Step 2: Check aspect ratio (tightly aligned with PAD_THRESHOLD)
+        # Step 2: Check side length and aspect ratio
         width, height = img_ori.size
+        
+        # Side length filter: any side < 250px is too small
+        if width < 250 or height < 250:
+            return {"decision": "skip", "reason": f"Image too small ({width}x{height} < 250px)"}
+
         ratio = width / height
         
         tw, th = target_resolution

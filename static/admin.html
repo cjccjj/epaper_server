@@ -405,7 +405,14 @@
             <div class="reddit-preview-list">
                 <template x-for="post in redditPreview" :key="post.id || post.url">
                     <div class="reddit-post" :class="{ 'skipped': post.status === 'skip' }" @click="showOverlay(post.filename ? '/api/bitmap/' + post.filename : post.img_url)">
-                        <img :src="post.filename ? '/api/bitmap/' + post.filename : post.img_url">
+                        <!-- Original Image (Always Shown) -->
+                        <img :src="post.img_url" style="height: 120px; object-fit: contain; background: #222; border-bottom: 1px solid var(--border);">
+                        
+                        <!-- Processed Image (Only if not skipped) -->
+                        <template x-if="post.filename">
+                            <img :src="'/api/bitmap/' + post.filename" style="height: 150px; object-fit: cover; background: #000;">
+                        </template>
+
                         <div class="post-title" x-text="post.title"></div>
                         <a :href="post.url" target="_blank" class="post-url" @click.stop x-text="post.url"></a>
                         
