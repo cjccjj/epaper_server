@@ -246,7 +246,7 @@ DEFAULT_REDDIT_CONFIG = {
     "dither_strength": 1.0,
     "sharpen_amount": 0.0,
     "auto_optimize": False,
-    "ai_prompt": ""
+    "ai_prompt": ai_optimizer.DEFAULT_SYSTEM_PROMPT
 }
 
 @app.get("/api/setup")
@@ -401,6 +401,18 @@ def list_devices(db: Session = Depends(get_db)):
     devices = db.query(database.Device).all()
     result = []
     for d in devices:
+        # Ensure reddit_config has all fields and a prompt
+        config = d.reddit_config or DEFAULT_REDDIT_CONFIG.copy()
+        needs_commit = False
+        
+        if not config.get("ai_prompt"):
+            config["ai_prompt"] = ai_optimizer.DEFAULT_SYSTEM_PROMPT
+            d.reddit_config = config
+            needs_commit = True
+        
+        if needs_commit:
+            db.commit()
+            
         # Calculate current local time for the device
         device_time = "Unknown"
         try:
@@ -420,7 +432,7 @@ def list_devices(db: Session = Depends(get_db)):
             "timezone": d.timezone,
             "device_time": device_time,
             "active_dish": d.active_dish,
-            "reddit_config": d.reddit_config,
+            "reddit_config": config,
             "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
             "images": [{"id": i.id, "filename": i.filename, "original_name": i.original_name} for i in d.images]
         })

@@ -10,6 +10,12 @@ from typing import Literal
 # Initialize OpenAI client
 client = OpenAI()
 
+# --- Thresholds & Constraints ---
+# These define when we skip images or choose specific resize methods
+CROP_THRESHOLD = 0.12    # Max 12% crop allowed
+STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed
+PAD_THRESHOLD = 0.35     # Max 35% padding allowed before skipping
+
 class ImageRenderIntent(BaseModel):
     # 1. Classification (Step 0 in prompt)
     image_style: Literal[
@@ -112,15 +118,16 @@ Purpose: enhance edges and text clarity (not tonal contrast).
 
 Guidelines:
 - Real‑world photography: usually ≤ 0.4
-- Text‑centric images, comics, diagrams, line art: 1.0 – 2.0
-- Mixed content: choose based on what is most important to read
+- Text‑centric images, flat color comics, diagrams, line art: 1.0 – 2.0
+- Mixed content: 0.4 to 1.0 choose a balanced value
 
 5. Dithering (range: 0 – 100)
 Purpose: simulate gradients on a 4‑level grayscale display.
 
 Guidelines:
-- High gradient content (photos, skies, soft shading): 70 – 100
-- Low gradient content (comics, diagrams, UI, line art): 0 – 50
+- High gradient content (photos, realism paintings): 70 – 100
+- Mid to low gradiant content (paintings, drawings): 50 - 70
+- Very Low gradient content (flat color comics, diagrams, UI, line art): 0 – 50
 - Lower dithering preserves stronger tonal contrast
 
 ────────────────────────
@@ -135,8 +142,15 @@ OUTPUT RULES
 def analyze_image(image_input, post_title="", post_url="", target_resolution=(400, 300), custom_prompt=None) -> ImageRenderIntent:
     """
     Analyzes an image (URL or PIL Image) using OpenAI Vision and returns a structured style object.
+    Use custom_prompt from the caller (database). 
+    If absolutely none provided, it will fail or use a very minimal fallback to avoid crash.
     """
-    system_prompt = custom_prompt if custom_prompt else DEFAULT_SYSTEM_PROMPT
+    if not custom_prompt:
+        # If we reach here without a prompt, it's a dev error or manual call without config.
+        # We use the DEFAULT_SYSTEM_PROMPT as a last resort, but the goal is to always pass one.
+        system_prompt = DEFAULT_SYSTEM_PROMPT
+    else:
+        system_prompt = custom_prompt
     
     # Handle image input
     if isinstance(image_input, str):
@@ -192,15 +206,23 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         if not img_ori:
             return {"decision": "skip", "reason": "Download failed"}
             
-        # Step 2: Check aspect ratio (8:3 to 4:6)
-        # 8:3 = 2.666, 4:6 = 0.666
+        # Step 2: Check aspect ratio (tightly aligned with PAD_THRESHOLD)
         width, height = img_ori.size
         ratio = width / height
         
-        if ratio > (8/3):
-            return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > 2.67)"}
-        if ratio < (4/6):
-            return {"decision": "skip", "reason": f"Image too narrow (ratio {ratio:.2f} < 0.67)"}
+        tw, th = target_resolution
+        target_ar = tw / th
+        
+        # Calculate limits based on PAD_THRESHOLD
+        # Max AR: target_ar / (1 - PAD_THRESHOLD)
+        # Min AR: target_ar * (1 - PAD_THRESHOLD)
+        max_ar = target_ar / (1 - PAD_THRESHOLD)
+        min_ar = target_ar * (1 - PAD_THRESHOLD)
+        
+        if ratio > max_ar:
+            return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > {max_ar:.2f})"}
+        if ratio < min_ar:
+            return {"decision": "skip", "reason": f"Image too narrow (ratio {ratio:.2f} < {min_ar:.2f})"}
 
         # Step 3: Analyze with AI
         style_obj = await asyncio.to_thread(
@@ -239,11 +261,6 @@ def get_process_strategy(ai_output, img_size=None, target_res=None):
     if ai_output.get("decision") == "skip":
         return {"decision": "skip", "reason": ai_output.get("reason", "AI Decision: Skip")}
     
-    # Thresholds
-    CROP_THRESHOLD = 0.12
-    STRETCH_THRESHOLD = 0.3
-    PAD_THRESHOLD = 0.35
-
     # Default values for processing (used if AI values out of range)
     DEFAULT_GAMMA = 1.0
     DEFAULT_SHARPEN = 0.5
