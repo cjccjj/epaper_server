@@ -16,8 +16,7 @@ import httpx
 import re
 import asyncio
 import image_processor
-import ai_stylist
-import reddit_ai
+import ai_optimizer
 import random
 import io
 from PIL import Image
@@ -362,29 +361,33 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                             filepath = os.path.join(BITMAP_DIR, filename)
                             
                             try:
-                                # Step 5: AI analysis
-                                print(f"      AI: Calling for style analysis...")
+                                # Step 5: AI Analysis
+                                print(f"      AI Analysis: Fetching optimization strategy...")
+                                ai_analysis = await ai_optimizer.get_ai_analysis(
+                                    img_url, 
+                                    entry.link, 
+                                    entry.title, 
+                                    (width, height),
+                                    ai_prompt=config.get("ai_prompt")
+                                )
                                 
-                                ai_prompt = config.get("ai_prompt")
-                                ai_analysis = await reddit_ai.get_ai_analysis(img_url, entry.link, entry.title, (width, height), ai_prompt=ai_prompt)
-                                print(f"      AI Response: {ai_analysis}")
-                                
-                                # Format Readable AI Summary - 7 fields
+                                # Process for display
                                 ai_parts = [
-                                    f"[{ai_analysis.get('decision', 'USE').upper()}]",
                                     f"Sty:{ai_analysis.get('image_style', '?')}",
-                                    f"Purp:{ai_analysis.get('post_purpose', '?')}",
-                                    f"Resz:{ai_analysis.get('resize_strategy', '?')}",
-                                    f"Gam:{ai_analysis.get('gamma', 1.0):.1f}",
-                                    f"Sharp:{ai_analysis.get('sharpen', 0.0):.1f}",
+                                    f"Pur:{ai_analysis.get('post_purpose', '?')}",
+                                    f"Dec:{ai_analysis.get('decision', '?')}",
+                                    f"Res:{ai_analysis.get('resize_strategy', '?')}",
+                                    f"Gam:{ai_analysis.get('gamma', 0.0):.1f}",
+                                    f"Sha:{ai_analysis.get('sharpen', 0.0):.1f}",
                                     f"Dith:{ai_analysis.get('dither', 0)}%"
                                 ]
                                 ai_summary = "AI: " + " | ".join(ai_parts)
 
                                 # Check AI decision early
                                 if ai_analysis.get("decision") == "skip":
-                                    print(f"      DECISION: SKIP (AI said skip)")
-                                    code_summary = "CODE: [SKIP] | Reason: AI decision"
+                                    reason = ai_analysis.get("reason", "AI decision")
+                                    print(f"      DECISION: SKIP ({reason})")
+                                    code_summary = f"CODE: [SKIP] | Reason: {reason}"
                                     all_posts.append({
                                         "id": post_id,
                                         "title": entry.title,
@@ -407,14 +410,30 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                                 if not img_ori:
                                     print(f"      SKIP: Download failed.")
+                                    code_summary = "CODE: [SKIP] | Download failed"
+                                    all_posts.append({
+                                        "id": post_id,
+                                        "title": entry.title,
+                                        "url": entry.link,
+                                        "img_url": img_url,
+                                        "filename": None,
+                                        "status": "skip",
+                                        "strategy": label,
+                                        "debug_ai": ai_summary,
+                                        "debug_code": code_summary
+                                    })
+                                    cache["posts"] = all_posts
+                                    save_device_reddit_cache(mac, cache)
+                                    seen_ids.add(post_id)
                                     continue
                                 
                                 # Step 7: Get technical strategy (with threshold checks)
-                                strategy = reddit_ai.get_process_strategy(ai_analysis, img_size=img_ori.size, target_res=(width, height))
+                                strategy = ai_optimizer.get_process_strategy(ai_analysis, img_size=img_ori.size, target_res=(width, height))
                                 
                                 if strategy.get("decision") == "skip":
-                                    print(f"      DECISION: SKIP (Strategy thresholds failed)")
-                                    code_summary = "CODE: [SKIP] | Reason: Thresholds"
+                                    reason = strategy.get("reason", "Thresholds")
+                                    print(f"      DECISION: SKIP ({reason})")
+                                    code_summary = f"CODE: [SKIP] | {reason}"
                                     all_posts.append({
                                         "id": post_id,
                                         "title": entry.title,
@@ -444,12 +463,15 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                 
                                 # Step 8: Final Processing
                                 print(f"      Image Processing: Applying pipeline...")
-                                processed_img, debug_info = await asyncio.to_thread(
-                                    image_processor.process_with_ai_strategy,
+                                processed_img = await asyncio.to_thread(
+                                    image_processor.process_image_pipeline,
                                     img_ori,
                                     (width, height),
-                                    ai_analysis,
-                                    strategy,
+                                    resize_method=strategy.get("resize_method", "padding"),
+                                    padding_color=strategy.get("padding_color", "white"),
+                                    gamma=strategy.get("gamma", 1.0),
+                                    sharpen=strategy.get("sharpen", 0.0),
+                                    dither_strength=strategy.get("dither_strength", 1.0),
                                     title=entry.title if show_titles else None,
                                     bit_depth=bit_depth,
                                     clip_pct=clip_pct,
@@ -695,11 +717,11 @@ def log_event(id: str = Header(None), body: dict = Body(...), db: Session = Depe
 
 @app.post("/admin/analyze_style")
 async def analyze_style(file: UploadFile = File(...)):
-    """Analyze image style using AI Stylist (for manual Gallery processing)."""
+    """Analyze image style using AI Optimizer (for manual Gallery processing)."""
     try:
         contents = await file.read()
         img = Image.open(io.BytesIO(contents))
-        style = ai_stylist.analyze_image(img)
+        style = ai_optimizer.analyze_image(img)
         return style
     except Exception as e:
         return {"error": str(e)}
