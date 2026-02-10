@@ -282,6 +282,22 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             filename_counter += 1
                         except Exception as e:
                             print(f"      ERROR: Image processing failed: {e}")
+                            # Ensure we still show this post in the preview with an error status
+                            all_posts.append({
+                                "id": post_id,
+                                "title": entry.title,
+                                "url": entry.link,
+                                "img_url": img_url,
+                                "filename": None,
+                                "status": "error",
+                                "strategy": label,
+                                "debug_ai": ai_summary if 'ai_summary' in locals() else "N/A",
+                                "debug_code": f"ERROR: {str(e)}"
+                            })
+                            # Incremental Save
+                            cache["posts"] = all_posts
+                            save_device_reddit_cache(mac, cache)
+                            seen_ids.add(post_id)
                             continue
                     else:
                         print(f"      SKIP: No valid image found in entry.")

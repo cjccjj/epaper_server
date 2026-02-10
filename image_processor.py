@@ -260,6 +260,18 @@ def process_image_pipeline(img_ori, target_size, resize_method="padding", paddin
     """
     tw, th = target_size
     
+    # Ensure image is in a processable mode (RGB) to avoid "wrong mode" errors in filters
+    if img_ori.mode in ("RGBA", "P"):
+        # Create a white background for transparent images
+        background = Image.new("RGB", img_ori.size, (255, 255, 255))
+        if img_ori.mode == "RGBA":
+            background.paste(img_ori, (0, 0), img_ori)
+        else:
+            background.paste(img_ori.convert("RGB"), (0, 0))
+        img_ori = background
+    elif img_ori.mode != "RGB":
+        img_ori = img_ori.convert("RGB")
+    
     # 1. Resize & Preparation
     if resize_method == "stretch":
         img = img_ori.resize((tw, th), Image.Resampling.LANCZOS)
