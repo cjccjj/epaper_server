@@ -37,6 +37,7 @@ document.addEventListener('alpine:init', () => {
         redditConfig: {
             subreddit: '',
             show_title: true,
+            bold_title: false,
             bit_depth: 2,
             gamma_index: 6,
             clip_percent: 20,

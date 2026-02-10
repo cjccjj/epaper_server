@@ -25,7 +25,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
         
     config = device.reddit_config or {}
     subreddit = config.get("subreddit", "aww")
-    show_titles = config.get("show_titles", True)
+    show_title = config.get("show_title", True)
     bit_depth = int(config.get("bit_depth", 1))
     
     # Use device-level display dimensions
@@ -231,10 +231,12 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 gamma=strategy.get("gamma", 1.0),
                                 sharpen=strategy.get("sharpen", 0.0),
                                 dither_strength=strategy.get("dither_strength", 1.0),
-                                title=entry.title if show_titles else None,
+                                title=entry.title if show_title else None,
                                 bit_depth=bit_depth,
                                 clip_pct=clip_pct,
-                                cost_pct=cost_pct
+                                cost_pct=cost_pct,
+                                font_size=12,
+                                bold=config.get("bold_title", False)
                             )
                             
                             # Save processed image

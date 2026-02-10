@@ -144,64 +144,98 @@ def apply_4g_fs(data, strength=1.0):
                     if x - 1 >= 0: out[y + 1, x - 1] += err * 1 / 16
     return np.clip(out, 0, 255).astype(np.uint8)
 
-def load_global_font():
+def load_global_font(size=12):
     """Load TTF font for text overlay."""
-    font_paths = ["/app/data/ntailu.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    font_paths = [
+        "/home/cj/epaper_server/static/DejaVuSans-Bold.ttf",
+        "/home/cj/epaper_server/static/ntailu.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    ]
     for path in font_paths:
         try:
-            return ImageFont.truetype(path, 24)
+            return ImageFont.truetype(path, size)
         except (IOError, OSError):
             continue
     return ImageFont.load_default()
 
-cached_font = load_global_font()
-
-def overlay_title(img, title):
-    """Overlay title on the bottom of the image with outline."""
-    global cached_font
+def overlay_title(img, title, font_size=12, bold=False):
+    """Overlay title on the bottom of the image with outline, max 2 lines."""
     if not title: return img
     
+    # User preference: dejavu_bold_outline style
+    # We use DejaVuSans-Bold and ensure it's centered with white outline.
+    font = load_global_font(font_size)
     draw = ImageDraw.Draw(img)
     w, h = img.size
     
-    try:
-        ascent, descent = cached_font.getmetrics()
-        actual_height = ascent + descent
-    except AttributeError:
-        actual_height = 12
+    # Estimate characters per line (approx 20-30 for 400px width at 12px)
+    # We'll use a conservative estimate based on font_size
+    chars_per_line = int((w - 20) / (font_size * 0.6)) 
+    
+    words = title.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        if len(" ".join(current_line + [word])) <= chars_per_line:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(" ".join(current_line))
+            current_line = [word]
+            if len(lines) >= 2: break
+    
+    if len(lines) < 2 and current_line:
+        lines.append(" ".join(current_line))
+    
+    # Truncate if still too many lines or last line too long
+    if len(lines) > 2:
+        lines = lines[:2]
+        
+    if len(lines) == 2:
+        if len(lines[1]) > chars_per_line - 3:
+            lines[1] = lines[1][:chars_per_line-3] + "..."
+    elif len(lines) == 1:
+        if len(lines[0]) > chars_per_line - 3:
+             # If it's just one line but it's super long, try to split it or truncate
+             if len(lines[0]) > chars_per_line * 1.5:
+                 split_point = chars_per_line
+                 lines = [lines[0][:split_point], lines[0][split_point:split_point+chars_per_line-3] + "..."]
+             else:
+                 lines[0] = lines[0][:chars_per_line-3] + "..."
 
-    area_h = max(34, actual_height + 4)
+    # Draw lines from bottom up
+    # y = h - 10 (margin) - line_height
+    line_spacing = 2
+    bbox = draw.textbbox((0, 0), "Ay", font=font)
+    line_h = bbox[3] - bbox[1]
     
-    def get_text_width(text):
-        bbox = draw.textbbox((0, 0), text, font=cached_font)
-        return bbox[2] - bbox[0]
+    # dejavu_bold_outline style uses a 1px stroke for the outline effect
+    # We use stroke_width=1 for the main text as well if bold is True (simulated bold on top of bold font)
+    # But the user asked for "dejavu_bold_outline" style specifically.
+    main_stroke = 1 if bold else 0
     
-    text_w = get_text_width(title)
-    if text_w > w - 20:
-        avg_char_w = text_w / len(title)
-        max_chars = int((w - 40) / avg_char_w)
-        title = title[:max_chars] 
-        while get_text_width(title + "...") > w - 20 and len(title) > 0:
-            title = title[:-1]
-        title += "..."
-        text_w = get_text_width(title)
-
-    x = (w - text_w) // 2
-    bbox = draw.textbbox((0, 0), title, font=cached_font)
-    text_h = bbox[3] - bbox[1]
-    y = h - area_h + (area_h - text_h) // 2 - 2
-    
-    for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
-        draw.text((x + dx, y + dy), title, font=cached_font, fill=255)
-    
-    draw.text((x, y), title, font=cached_font, fill=0)
+    for i, line in enumerate(reversed(lines)):
+        text_bbox = draw.textbbox((0, 0), line, font=font, stroke_width=main_stroke)
+        tw = text_bbox[2] - text_bbox[0]
+        x = (w - tw) // 2
+        y = h - 10 - (i + 1) * (line_h + line_spacing)
+        
+        # White outline (drawn manually for maximum compatibility/control)
+        for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+            draw.text((x + dx, y + dy), line, font=font, fill=255, stroke_width=main_stroke)
+        
+        # Black main text
+        draw.text((x, y), line, font=font, fill=0, stroke_width=main_stroke)
+        
     return img
 
 # --- Pipeline Function ---
 
 def process_image_pipeline(img_ori, target_size, resize_method="padding", padding_color="white", 
                            gamma=1.0, sharpen=0.0, dither_strength=1.0, title=None, 
-                           bit_depth=1, clip_pct=22, cost_pct=6):
+                           bit_depth=1, clip_pct=22, cost_pct=6, font_size=12, bold=False):
     """
     Main pipeline: Processes an image using explicit technical parameters.
     This is a pure execution layer; all decisions are made by ai_optimizer.py.
@@ -248,7 +282,7 @@ def process_image_pipeline(img_ori, target_size, resize_method="padding", paddin
     # 5. Text Overlay
     if title:
         out_img = out_img.convert("L")
-        out_img = overlay_title(out_img, title)
+        out_img = overlay_title(out_img, title, font_size=font_size, bold=bold)
         if bit_depth == 1:
             out_img = out_img.convert("1")
             

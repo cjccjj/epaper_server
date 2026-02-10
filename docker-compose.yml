@@ -7,7 +7,7 @@ services:
     volumes:
       - ./bitmaps:/app/bitmaps
       - ./data:/app/data
-      - ./static/ntailu.ttf:/app/data/ntailu.ttf
+      - ./static:/app/static
     environment:
       - ADMIN_PASSWORD=z0000l
       - OPENAI_API_KEY=${OPENAI_API_KEY}
