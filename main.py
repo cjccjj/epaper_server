@@ -324,26 +324,46 @@ def get_display(
     if not current_refresh_rate:
         current_refresh_rate = 60
         
-    # Logic to select content based on active dish
+    # Logic to select content based on active dish and display mode
+    enabled_dishes = device.enabled_dishes or ["gallery"]
+    display_mode = device.display_mode or "sequence"
+    
+    # Pick the dish to use for this request
+    current_dish = "gallery"
+    if display_mode == "random":
+        import random
+        current_dish = random.choice(enabled_dishes)
+    else: # sequence
+        dish_idx = device.last_dish_index % len(enabled_dishes)
+        current_dish = enabled_dishes[dish_idx]
+        device.last_dish_index = (dish_idx + 1) % len(enabled_dishes)
+
     filename = "placeholder.png" # Fallback
     
-    if device.active_dish == "gallery":
+    if current_dish == "gallery":
         images = sorted(device.images, key=lambda x: x.order)
         if images:
             idx = device.current_image_index % len(images)
             current_img = images[idx]
             filename = current_img.filename
             device.current_image_index = (idx + 1) % len(images)
-    elif device.active_dish == "reddit":
+    elif current_dish == "reddit":
         cache = load_device_reddit_cache(id)
         posts = cache.get("posts", [])
         if posts:
             idx = device.current_image_index % len(posts)
             filename = posts[idx].get("filename", "placeholder.png")
             device.current_image_index = (device.current_image_index + 1) % len(posts)
-        else:
-            filename = "placeholder.png"
+    elif current_dish == "rss":
+        # TODO: Implement Rss processed image cache and serving logic
+        # For now, we fallback to placeholder or a generic image
+        filename = "placeholder.png"
     
+    # Logic to ensure filename exists or fallback
+    if not os.path.exists(os.path.join(BITMAP_DIR, filename)):
+        print(f"Warning: File {filename} not found in {BITMAP_DIR}. Falling back to placeholder.")
+        filename = "placeholder.png"
+        
     # Update contact time only after successful image selection
     now_utc = datetime.datetime.now(datetime.UTC)
     now = now_utc.replace(tzinfo=None)
@@ -439,7 +459,10 @@ def list_devices(db: Session = Depends(get_db)):
             "timezone": d.timezone,
             "device_time": device_time,
             "active_dish": d.active_dish,
+            "enabled_dishes": d.enabled_dishes or ["gallery"],
+            "display_mode": d.display_mode or "sequence",
             "reddit_config": config,
+            "rss_config": d.rss_config or DEFAULT_RSS_CONFIG.copy(),
             "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
             "images": [{"id": i.id, "filename": i.filename, "original_name": i.original_name} for i in d.images]
         })
@@ -460,8 +483,14 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
         device.timezone = settings["timezone"]
     if "active_dish" in settings:
         device.active_dish = settings["active_dish"]
+    if "enabled_dishes" in settings:
+        device.enabled_dishes = settings["enabled_dishes"]
+    if "display_mode" in settings:
+        device.display_mode = settings["display_mode"]
     if "reddit_config" in settings:
         device.reddit_config = settings["reddit_config"]
+    if "rss_config" in settings:
+        device.rss_config = settings["rss_config"]
     
     db.commit()
     return {"status": "success"}

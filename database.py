@@ -38,7 +38,11 @@ class Device(Base):
     display_width = Column(Integer, default=400)
     display_height = Column(Integer, default=300)
     active_dish = Column(String, default="gallery")
+    enabled_dishes = Column(JSON, default=lambda: ["gallery"])
+    display_mode = Column(String, default="sequence") # "sequence" or "random"
+    last_dish_index = Column(Integer, default=0)
     reddit_config = Column(JSON, default=lambda: {"subreddit": "aww", "sort": "top", "time": "day"})
+    rss_config = Column(JSON, default=lambda: {"url": "", "bit_depth": 2, "auto_optimize": False})
     
     # Relationships
     images = relationship("DeviceImage", back_populates="device", cascade="all, delete-orphan")
@@ -83,6 +87,26 @@ def run_migrations():
             print("Migration: Adding 'display_height' column to 'devices' table")
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN display_height INTEGER DEFAULT 300"))
+                conn.commit()
+        if "enabled_dishes" not in columns:
+            print("Migration: Adding 'enabled_dishes' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN enabled_dishes JSON DEFAULT '[\"gallery\"]'"))
+                conn.commit()
+        if "display_mode" not in columns:
+            print("Migration: Adding 'display_mode' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN display_mode TEXT DEFAULT 'sequence'"))
+                conn.commit()
+        if "last_dish_index" not in columns:
+            print("Migration: Adding 'last_dish_index' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN last_dish_index INTEGER DEFAULT 0"))
+                conn.commit()
+        if "rss_config" not in columns:
+            print("Migration: Adding 'rss_config' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN rss_config JSON DEFAULT '{}'"))
                 conn.commit()
 
 def init_db():

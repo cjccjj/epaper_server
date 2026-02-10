@@ -199,12 +199,22 @@
             </div>
             
             <!-- Dish Selector -->
-            <div class="dish-selector-row">
-                <label>Active Dish:</label>
-                <div class="dish-toggle-group">
-                    <button class="dish-btn" :class="{ 'active-dish': activeDish === 'gallery' }" @click="setActiveDish('gallery')">🖼️ Gallery</button>
-                    <button class="dish-btn" :class="{ 'active-dish': activeDish === 'reddit' }" @click="setActiveDish('reddit')">Reddit Top</button>
-                    <button class="dish-btn" :class="{ 'active-dish': activeDish === 'rss' }" @click="setActiveDish('rss')">📰 Rss</button>
+            <div class="dish-selector-row" style="flex-wrap: wrap; gap: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label>Enable Sources:</label>
+                    <div class="dish-toggle-group">
+                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('gallery') }" @click="toggleDish('gallery')">🖼️ Gallery</button>
+                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('reddit') }" @click="toggleDish('reddit')">Reddit Top</button>
+                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('rss') }" @click="toggleDish('rss')">📰 Rss</button>
+                    </div>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label>Display Mode:</label>
+                    <select x-model="deviceSettings.display_mode" @change="saveDeviceSettings" style="height: 28px; font-size: 11px; padding: 2px 6px;">
+                        <option value="sequence">Sequence (Cycle sources)</option>
+                        <option value="random">Random (Shuffle sources)</option>
+                    </select>
                 </div>
             </div>
         </div>

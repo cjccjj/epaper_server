@@ -17,7 +17,9 @@ document.addEventListener('alpine:init', () => {
             refresh_rate: 30,
             display_width: 400,
             display_height: 300,
-            timezone: 'UTC'
+            timezone: 'UTC',
+            enabled_dishes: ['gallery'],
+            display_mode: 'sequence'
         },
         
         // Gallery State
@@ -115,7 +117,9 @@ document.addEventListener('alpine:init', () => {
                     refresh_rate: device.refresh_rate,
                     display_width: device.display_width,
                     display_height: device.display_height,
-                    timezone: device.timezone
+                    timezone: device.timezone,
+                    enabled_dishes: device.enabled_dishes || ['gallery'],
+                    display_mode: device.display_mode || 'sequence'
                 };
                 this.activeDish = device.active_dish || 'gallery';
                 
@@ -157,6 +161,28 @@ document.addEventListener('alpine:init', () => {
             // Update local device object too
             const d = this.devices.find(x => x.mac_address === this.currentMac);
             if (d) d.active_dish = dish;
+        },
+
+        async toggleDish(dish) {
+            if (!this.deviceSettings.enabled_dishes) {
+                this.deviceSettings.enabled_dishes = ['gallery'];
+            }
+            
+            const index = this.deviceSettings.enabled_dishes.indexOf(dish);
+            if (index > -1) {
+                // Remove if already present, but keep at least one
+                if (this.deviceSettings.enabled_dishes.length > 1) {
+                    this.deviceSettings.enabled_dishes.splice(index, 1);
+                } else {
+                    alert("At least one source must be enabled.");
+                    return;
+                }
+            } else {
+                // Add if not present
+                this.deviceSettings.enabled_dishes.push(dish);
+            }
+            
+            await this.saveDeviceSettings();
         },
 
         // --- Tab Management ---
