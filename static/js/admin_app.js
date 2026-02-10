@@ -379,12 +379,18 @@ document.addEventListener('alpine:init', () => {
                         const r = await fetch(`/admin/reddit/preview/${this.currentMac}`);
                         const d = await r.json();
                         
+                        // Update the preview list immediately with whatever is available in the cache
+                        if (d.posts && Array.isArray(d.posts)) {
+                            this.redditPreview = d.posts;
+                        }
+
                         if (d.status === 'fetching') {
                             this.redditStatus = `<span style="color: #fbbf24;">⏳ Fetching: ${d.progress || 'Processing...'}</span>`;
                         } else {
                             clearInterval(poll);
                             this.isFetchingReddit = false;
                             this.redditStatus = '<span style="color: #10b981;">✅ Fetch Complete!</span>';
+                            // Final load to ensure everything is synced
                             await this.loadRedditPreview();
                             setTimeout(() => { this.redditStatus = 'Ready'; }, 5000);
                         }
