@@ -14,6 +14,7 @@ import asyncio
 import image_processor
 import ai_optimizer
 import rss_fetcher
+import rss_general_fetcher
 import random
 import io
 from PIL import Image
@@ -244,6 +245,13 @@ DEFAULT_REDDIT_CONFIG = {
     "cost_pct": 6,
     "dither_strength": 1.0,
     "sharpen_amount": 0.0,
+    "auto_optimize": False,
+    "ai_prompt": ai_optimizer.DEFAULT_SYSTEM_PROMPT
+}
+
+DEFAULT_RSS_CONFIG = {
+    "url": "",
+    "bit_depth": 2,
     "auto_optimize": False,
     "ai_prompt": ai_optimizer.DEFAULT_SYSTEM_PROMPT
 }
@@ -498,6 +506,16 @@ async def fetch_reddit_now(mac: str, db: Session = Depends(get_db)):
     asyncio.create_task(refresh_device_reddit_cache(mac))
     
     return {"status": "fetch_started"}
+
+@app.post("/admin/rss/fetch_now")
+async def fetch_rss_now(data: dict = Body(...)):
+    """Fetch and parse a general RSS feed."""
+    url = data.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    
+    items = await rss_general_fetcher.fetch_general_rss(url)
+    return {"status": "success", "items": items}
 
 @app.post("/admin/upload/{mac}")
 async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Depends(get_db)):

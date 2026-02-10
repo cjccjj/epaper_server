@@ -13,7 +13,7 @@ client = OpenAI()
 # --- Thresholds & Constraints ---
 # These define when we skip images or choose specific resize methods
 CROP_THRESHOLD = 0.5    # Max 20% crop allowed
-STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed
+STRETCH_THRESHOLD = 0.35  # Max 30% distortion allowed
 PAD_THRESHOLD = 0.5     # Max 35% padding allowed before skipping
 
 class ImageRenderIntent(BaseModel):

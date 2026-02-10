@@ -48,6 +48,17 @@ document.addEventListener('alpine:init', () => {
         redditPreview: [],
         redditStatus: 'Ready',
         isFetchingReddit: false,
+
+        // Rss State
+        rssConfig: {
+            url: '',
+            bit_depth: 2,
+            auto_optimize: false,
+            ai_prompt: ''
+        },
+        rssPreview: [],
+        rssStatus: 'Ready',
+        isFetchingRss: false,
         
         // UI Helpers
         isAnalyzingAI: false,
@@ -111,6 +122,8 @@ document.addEventListener('alpine:init', () => {
                 await this.loadGallery();
                 if (this.currentTab === 'reddit') {
                     await this.loadRedditConfig();
+                } else if (this.currentTab === 'rss') {
+                    await this.loadRssConfig();
                 }
             }
         },
@@ -153,6 +166,8 @@ document.addEventListener('alpine:init', () => {
             
             if (tab === 'reddit' && this.currentMac) {
                 await this.loadRedditConfig();
+            } else if (tab === 'rss' && this.currentMac) {
+                await this.loadRssConfig();
             }
         },
 
@@ -437,6 +452,75 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (e) {
                 console.error("Clear reddit cache error:", e);
+            }
+        },
+
+        // --- Rss Management ---
+        async loadRssConfig() {
+            if (!this.currentMac) return;
+            const device = this.devices.find(d => d.mac_address === this.currentMac);
+            if (device && device.rss_config) {
+                this.rssConfig = device.rss_config;
+            }
+        },
+
+        async saveRssConfig(showSuccess = true) {
+            if (!this.currentMac) return;
+            try {
+                const res = await fetch(`/admin/device/${this.currentMac}/settings`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ rss_config: this.rssConfig })
+                });
+                if (res.ok) {
+                    if (showSuccess) {
+                        this.rssStatus = '<span style="color: #10b981;">✅ Config Saved</span>';
+                        setTimeout(() => { this.rssStatus = 'Ready'; }, 3000);
+                    }
+                    await this.fetchDevices();
+                }
+            } catch (e) {
+                console.error("Save rss config error:", e);
+            }
+        },
+
+        async fetchRssNow() {
+            if (!this.rssConfig.url) {
+                alert("Please enter an RSS URL first.");
+                return;
+            }
+            this.isFetchingRss = true;
+            this.rssStatus = '⏳ Fetching RSS...';
+            this.rssPreview = [];
+
+            try {
+                // First save the config
+                await this.saveRssConfig(false);
+
+                const res = await fetch('/admin/rss/fetch_now', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ url: this.rssConfig.url })
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        this.rssPreview = data.items || [];
+                        this.rssStatus = `<span style="color: #10b981;">✅ Found ${this.rssPreview.length} items</span>`;
+                    } else {
+                        this.rssStatus = `<span style="color: #ef4444;">❌ Error: ${data.detail || 'Unknown'}</span>`;
+                    }
+                } else {
+                    const err = await res.json();
+                    this.rssStatus = `<span style="color: #ef4444;">❌ Error: ${err.detail || res.statusText}</span>`;
+                }
+            } catch (e) {
+                console.error("Fetch RSS error:", e);
+                this.rssStatus = `<span style="color: #ef4444;">❌ Error: ${e}</span>`;
+            } finally {
+                this.isFetchingRss = false;
+                setTimeout(() => { if (this.rssStatus.includes('✅')) this.rssStatus = 'Ready'; }, 5000);
             }
         }
     }));
