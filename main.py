@@ -19,8 +19,6 @@ import random
 import io
 from PIL import Image
 from typing import Optional, List
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 
 # Configuration
 BITMAP_DIR = "bitmaps"
@@ -76,8 +74,35 @@ def save_device_reddit_cache(mac, cache):
     except Exception as e:
         print(f"Error saving reddit cache for {mac}: {e}")
 
-# Initialize scheduler
-scheduler = AsyncIOScheduler()
+# --- RSS Cache Management ---
+def get_rss_cache_path(mac):
+    clean_mac = mac.replace(":", "").lower()
+    return os.path.join(DATA_DIR, f"rss_cache_{clean_mac}.json")
+
+def load_device_rss_cache(mac):
+    path = get_rss_cache_path(mac)
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                cache = json.load(f)
+                return cache
+        except Exception as e:
+            print(f"Error loading rss cache for {mac}: {e}")
+    
+    return {
+        "posts": [],
+        "status": "idle",
+        "progress": ""
+    }
+
+def save_device_rss_cache(mac, cache):
+    path = get_rss_cache_path(mac)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "w") as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f"Error saving rss cache for {mac}: {e}")
 
 # --- App Lifecycle ---
 # Initialize database
@@ -86,10 +111,7 @@ database.init_db()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
-    # (Scheduled updates disabled as per user request)
-    
     yield
-    
     # Shutdown logic
 
 app = FastAPI(lifespan=lifespan)
@@ -179,29 +201,6 @@ async def login(response: Response, password: str = Body(None), request: Request
         return response
     else:
         return RedirectResponse(url="/login?error=1", status_code=303)
-
-async def scheduled_reddit_update():
-    """Periodic job to update Reddit content for all active devices."""
-    db = database.SessionLocal()
-    try:
-        devices = db.query(database.Device).all()
-        for device in devices:
-            if device.active_dish == "reddit":
-                # Only refresh if cache is older than 3 hours
-                cache = load_device_reddit_cache(device.mac_address)
-                if cache["last_update"]:
-                    elapsed = (datetime.datetime.now() - cache["last_update"]).total_seconds()
-                    if elapsed < 3 * 3600:
-                        continue
-                
-                print(f"DEBUG: Scheduled Reddit update for {device.mac_address}")
-                asyncio.create_task(refresh_device_reddit_cache(device.mac_address))
-    finally:
-        db.close()
-
-async def initial_fetch_check():
-    """Check if any device needs an initial Reddit fetch."""
-    await scheduled_reddit_update()
 
 async def refresh_device_reddit_cache(mac, db_session=None):
     """Fetch and dither images for a specific device using the rss_fetcher module."""
@@ -328,44 +327,65 @@ def get_display(
     enabled_dishes = device.enabled_dishes or ["gallery"]
     display_mode = device.display_mode or "sequence"
     
-    # Pick the dish to use for this request
-    current_dish = "gallery"
-    if display_mode == "random" and enabled_dishes:
-        current_dish = random.choice(enabled_dishes)
-    elif enabled_dishes: # sequence
-        dish_idx = device.last_dish_index % len(enabled_dishes)
-        current_dish = enabled_dishes[dish_idx]
-        device.last_dish_index = (dish_idx + 1) % len(enabled_dishes)
+    # Try up to len(enabled_dishes) to find a dish with valid content
+    for _ in range(len(enabled_dishes)):
+        # Pick the dish to use for this request
+        current_dish = "gallery"
+        if display_mode == "random" and enabled_dishes:
+            current_dish = random.choice(enabled_dishes)
+        elif enabled_dishes: # sequence
+            dish_idx = device.last_dish_index % len(enabled_dishes)
+            current_dish = enabled_dishes[dish_idx]
+            device.last_dish_index = (dish_idx + 1) % len(enabled_dishes)
 
-    filename = "placeholder.png" # Fallback
-    
-    if current_dish == "gallery":
-        images = sorted(device.images, key=lambda x: x.order)
-        if images:
-            idx = device.current_image_index % len(images)
-            current_img = images[idx]
-            filename = current_img.filename or "placeholder.png"
-            device.current_image_index = (idx + 1) % len(images)
-    elif current_dish == "reddit":
-        cache = load_device_reddit_cache(id)
-        posts = cache.get("posts", [])
-        if posts:
-            idx = device.current_image_index % len(posts)
-            filename = posts[idx].get("filename") or "placeholder.png"
-            device.current_image_index = (device.current_image_index + 1) % len(posts)
-    elif current_dish == "rss":
-        # TODO: Implement Rss processed image cache and serving logic
-        # For now, we fallback to placeholder or a generic image
-        filename = "placeholder.png"
-    
-    # Ensure filename is a string and not None
-    if not filename:
-        filename = "placeholder.png"
+        filename = None
         
-    # Logic to ensure filename exists or fallback
-    if not os.path.exists(os.path.join(BITMAP_DIR, filename)):
-        print(f"Warning: File {filename} not found in {BITMAP_DIR}. Falling back to placeholder.")
-        filename = "placeholder.png"
+        if current_dish == "gallery":
+            # Filter to only images that actually exist on disk
+            images = sorted(device.images, key=lambda x: x.order)
+            valid_images = [img for img in images if img.filename and os.path.exists(os.path.join(BITMAP_DIR, img.filename))]
+            
+            if valid_images:
+                idx = device.current_image_index % len(valid_images)
+                filename = valid_images[idx].filename
+                device.current_image_index = (idx + 1) % len(valid_images)
+                
+        elif current_dish == "reddit":
+            cache = load_device_reddit_cache(id)
+            posts = cache.get("posts", [])
+            # Filter to only posts that actually have files on disk
+            valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
+            
+            if valid_posts:
+                idx = device.current_image_index % len(valid_posts)
+                filename = valid_posts[idx].get("filename")
+                device.current_image_index = (idx + 1) % len(valid_posts)
+                
+        elif current_dish == "rss":
+            cache = load_device_rss_cache(id)
+            posts = cache.get("posts", [])
+            # Filter to only posts that actually have files on disk
+            valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
+            
+            if valid_posts:
+                idx = device.current_image_index % len(valid_posts)
+                filename = valid_posts[idx].get("filename")
+                device.current_image_index = (idx + 1) % len(valid_posts)
+
+        if filename:
+            # Found a valid file, we're done
+            break
+        else:
+            # If no content for this dish, sequence mode naturally moves to next dish on next call
+            # But for this call, we continue the loop to try another enabled dish immediately
+            if display_mode == "random":
+                continue # Try another random dish
+            else:
+                # In sequence mode, we already advanced last_dish_index, so just loop to try next
+                continue
+
+    if not filename:
+        raise HTTPException(status_code=404, detail="No valid content found in any enabled source")
         
     # Update contact time only after successful image selection
     now_utc = datetime.datetime.now(datetime.UTC)
@@ -539,9 +559,31 @@ async def fetch_reddit_now(mac: str, db: Session = Depends(get_db)):
     
     return {"status": "fetch_started"}
 
+@app.get("/admin/rss/preview/{mac}")
+def rss_preview(mac: str):
+    cache = load_device_rss_cache(mac)
+    return {
+        "posts": cache.get("posts", []),
+        "status": cache.get("status", "idle"),
+        "progress": cache.get("progress", ""),
+        "last_refresh": cache.get("last_refresh")
+    }
+
+@app.post("/admin/rss/fetch_now/{mac}")
+async def fetch_rss_now_device(mac: str, db: Session = Depends(get_db)):
+    """Trigger a full RSS refresh (fetching images and processing) for a device."""
+    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    asyncio.create_task(rss_general_fetcher.refresh_device_rss_cache(
+        mac, db, BITMAP_DIR, load_device_rss_cache, save_device_rss_cache
+    ))
+    return {"status": "fetch_started"}
+
 @app.post("/admin/rss/fetch_now")
-async def fetch_rss_now(data: dict = Body(...)):
-    """Fetch and parse a general RSS feed."""
+async def fetch_rss_now_general(data: dict = Body(...)):
+    """Fetch and parse a general RSS feed (preview only)."""
     url = data.get("url")
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
@@ -588,19 +630,36 @@ def delete_image(image_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/admin/reddit/cache/{mac}")
 def clear_reddit_cache(mac: str):
-    """Clear Reddit cache and delete associated images."""
-    cache = load_device_reddit_cache(mac)
-    for post in cache.get("posts", []):
-        if post.get("filename"):
-            path = os.path.join(BITMAP_DIR, post["filename"])
-            if os.path.exists(path):
-                os.remove(path)
+    """Clear Reddit cache and delete all associated images using prefix."""
+    clean_mac = mac.replace(":", "").lower()
+    prefix = f"reddit_{clean_mac}_"
     
-    # Reset cache file
-    path = get_device_cache_path(mac)
-    if os.path.exists(path):
-        os.remove(path)
-        
+    # Delete files by prefix
+    for f in os.listdir(BITMAP_DIR):
+        if f.startswith(prefix):
+            try: os.remove(os.path.join(BITMAP_DIR, f))
+            except: pass
+    
+    # Save empty cache
+    new_cache = {"posts": [], "status": "idle", "progress": "Cache cleared", "last_update": None}
+    save_device_reddit_cache(mac, new_cache)
+    return {"status": "success"}
+
+@app.delete("/admin/rss/cache/{mac}")
+def clear_rss_cache(mac: str):
+    """Clear RSS cache and delete all associated images using prefix."""
+    clean_mac = mac.replace(":", "").lower()
+    prefix = f"rss_{clean_mac}_"
+    
+    # Delete files by prefix
+    for f in os.listdir(BITMAP_DIR):
+        if f.startswith(prefix):
+            try: os.remove(os.path.join(BITMAP_DIR, f))
+            except: pass
+    
+    # Save empty cache
+    new_cache = {"posts": [], "status": "idle", "progress": "Cache cleared", "last_refresh": None}
+    save_device_rss_cache(mac, new_cache)
     return {"status": "success"}
 
 if __name__ == "__main__":

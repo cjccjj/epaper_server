@@ -1,7 +1,14 @@
 import feedparser
 import re
 import httpx
+import os
+import asyncio
+import datetime
+import io
 from typing import List, Dict, Optional
+from PIL import Image
+import ai_optimizer
+import image_processor
 
 async def fetch_general_rss(url: str) -> List[Dict]:
     """
@@ -74,3 +81,129 @@ async def fetch_general_rss(url: str) -> List[Dict]:
         })
 
     return items
+
+async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_func, save_cache_func):
+    """
+    Refreshes the General RSS image cache for a specific device.
+    Similar to Reddit but for any RSS feed.
+    """
+    import database
+    
+    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+    if not device:
+        print(f"ERROR: Device {mac} not found for RSS refresh")
+        return
+        
+    config = device.rss_config or {}
+    rss_url = config.get("url")
+    if not rss_url:
+        print(f"ERROR: No RSS URL configured for {mac}")
+        return
+
+    bit_depth = int(config.get("bit_depth", 1))
+    width = device.display_width or 400
+    height = device.display_height or 300
+    auto_optimize = config.get("auto_optimize", False)
+    ai_prompt = config.get("ai_prompt")
+
+    print(f"\n[RSS FETCH] Starting for {mac} URL: {rss_url}")
+    
+    cache = load_cache_func(mac)
+    cache["status"] = "fetching"
+    cache["progress"] = "Fetching RSS feed..."
+    save_cache_func(mac, cache)
+    
+    # 1. Clear old files
+    clean_mac = mac.replace(":", "").lower()
+    for f in os.listdir(BITMAP_DIR):
+        if f.startswith(f"rss_{clean_mac}_"):
+            try:
+                os.remove(os.path.join(BITMAP_DIR, f))
+            except:
+                pass
+    
+    # 2. Reset cache
+    cache["posts"] = []
+    save_cache_func(mac, cache)
+
+    # 3. Fetch items
+    items = await fetch_general_rss(rss_url)
+    if not items:
+        cache["status"] = "error"
+        cache["progress"] = "Failed to fetch or parse RSS feed"
+        save_cache_func(mac, cache)
+        return
+
+    all_processed = []
+    filename_counter = 0
+
+    # 4. Process items with images
+    for i, item in enumerate(items[:15]): # Limit to 15 items
+        img_url = item.get("img_url")
+        if not img_url:
+            all_processed.append({**item, "filename": None, "status": "no_image"})
+            continue
+
+        cache["progress"] = f"Processing item {i+1}/{len(items)}"
+        save_cache_func(mac, cache)
+
+        filename = f"rss_{clean_mac}_{filename_counter}.png"
+        filepath = os.path.join(BITMAP_DIR, filename)
+
+        try:
+            print(f"      AI Analysis for: {item['title'][:50]}...")
+            ai_analysis, img_ori = await ai_optimizer.get_ai_analysis(
+                img_url, 
+                item["post_url"], 
+                item["title"], 
+                (width, height),
+                ai_prompt=ai_prompt
+            )
+
+            # Technical strategy
+            img_size = ai_analysis.get("_img_size")
+            strategy = ai_optimizer.get_process_strategy(ai_analysis, img_size=img_size, target_res=(width, height))
+            
+            if strategy.get("decision") == "skip":
+                all_processed.append({**item, "filename": None, "status": "skip", "reason": strategy.get("reason")})
+                continue
+
+            # Process image
+            final_show_title = strategy.get("include_title", False) if auto_optimize else False
+            
+            processed_img = await asyncio.to_thread(
+                image_processor.process_image_pipeline,
+                img_ori,
+                (width, height),
+                resize_method=strategy.get("resize_method", "padding"),
+                padding_color=strategy.get("padding_color", "white"),
+                gamma=strategy.get("gamma", 1.0),
+                sharpen=strategy.get("sharpen", 0.0),
+                dither_strength=strategy.get("dither_strength", 1.0),
+                title=item["title"] if final_show_title else None,
+                bit_depth=bit_depth
+            )
+            
+            # Save
+            await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
+            
+            all_processed.append({
+                **item,
+                "filename": filename,
+                "status": "ok"
+            })
+            filename_counter += 1
+
+        except Exception as e:
+            print(f"      ERROR processing RSS item: {e}")
+            all_processed.append({**item, "filename": None, "status": "error", "error": str(e)})
+
+        # Incremental save
+        cache["posts"] = all_processed
+        save_cache_func(mac, cache)
+
+    cache["status"] = "idle"
+    cache["progress"] = "Complete"
+    cache["last_refresh"] = datetime.datetime.now().isoformat()
+    save_cache_func(mac, cache)
+    print(f"[RSS FETCH] Done for {mac}. Processed {filename_counter} images.")
