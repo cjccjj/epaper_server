@@ -509,7 +509,7 @@ async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Dep
     ext = os.path.splitext(file.filename)[1]
     if not ext: ext = ".png" # Default to .png if no extension
     
-    filename = f"{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
+    filename = f"gallery_{mac.replace(':', '')}_{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(BITMAP_DIR, filename)
 
     with open(file_path, "wb") as buffer:

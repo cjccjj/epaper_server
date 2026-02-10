@@ -7,7 +7,7 @@ import os
 # --- Configuration ---
 OVERLAY_FONT_SIZE = 14  # Default font size for title overlay
 
-# --- Helper Functions (Core Processing) ---
+# --- Core Processing Functions ---
 
 def download_image_simple(url):
     """Download image from URL and return as PIL Image object."""
@@ -16,6 +16,12 @@ def download_image_simple(url):
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return Image.open(io.BytesIO(response.content))
+    except requests.exceptions.Timeout:
+        print(f"Timeout error downloading image: {url}")
+        return None
+    except requests.exceptions.ConnectionError:
+        print(f"Connection error downloading image: {url}")
+        return None
     except Exception as e:
         print(f"Error downloading image: {e}")
         return None
@@ -94,18 +100,20 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     return data.astype(np.uint8)
 
 def apply_fs(data, strength=1.0):
-    """1-bit Floyd-Steinberg Dithering with serpentine scan."""
+    """1-bit Floyd-Steinberg Dithering with serpentine scan to minimize artifacts."""
     h, w = data.shape
     out = data.astype(np.float32)
     
     for y in range(h):
-        ltr = (y % 2 == 0)
+        ltr = (y % 2 == 0) # Serpentine scan
         rng = range(w) if ltr else range(w - 1, -1, -1)
         for x in rng:
             old_val = out[y, x]
             new_val = 0 if old_val < 128 else 255
             err = (old_val - new_val) * strength
             out[y, x] = new_val
+            
+            # Error diffusion coefficients
             if ltr:
                 if x + 1 < w: out[y, x + 1] += err * 7 / 16
                 if y + 1 < h:
@@ -121,18 +129,20 @@ def apply_fs(data, strength=1.0):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 def apply_4g_fs(data, strength=1.0):
-    """4-level Floyd-Steinberg Dithering (0, 85, 170, 255)."""
+    """4-level Floyd-Steinberg Dithering for 2-bit grayscale displays (0, 85, 170, 255)."""
     h, w = data.shape
     out = data.astype(np.float32)
     
     for y in range(h):
-        ltr = (y % 2 == 0)
+        ltr = (y % 2 == 0) # Serpentine scan
         rng = range(w) if ltr else range(w - 1, -1, -1)
         for x in rng:
             old_val = out[y, x]
-            new_val = np.round(old_val / 85.0) * 85.0
+            new_val = np.round(old_val / 85.0) * 85.0 # Quantize to 4 levels
             err = (old_val - new_val) * strength
             out[y, x] = new_val
+            
+            # Error diffusion coefficients
             if ltr:
                 if x + 1 < w: out[y, x + 1] += err * 7 / 16
                 if y + 1 < h:

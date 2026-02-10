@@ -207,24 +207,24 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
 
 async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_prompt=None):
     """
-    AI Interface: Analyzes image and post metadata using real AI.
-    Now includes aspect ratio filtering before calling AI.
+    Downloads image for aspect ratio check, then calls AI for analysis.
+    Returns: (analysis_dict, pil_image)
     """
     try:
         # Step 1: Download image to check aspect ratio
         import image_processor
         img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
+        
         if not img_ori:
-            return {"decision": "skip", "reason": "Download failed"}
+            return {"decision": "skip", "reason": "Download failed"}, None
             
         # Step 2: Check side length and aspect ratio
         width, height = img_ori.size
-        
         tw, th = target_resolution
         
         # Relative side length filter: skip if < 50% of target width or height
         if width < tw * 0.5 or height < th * 0.5:
-            return {"decision": "skip", "reason": f"Image too small ({width}x{height} < 50% of {tw}x{th})"}
+            return {"decision": "skip", "reason": f"Image too small ({width}x{height} < 50% of {tw}x{th})"}, img_ori
 
         ratio = width / height
         target_ar = tw / th
@@ -237,9 +237,9 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
         min_ar = target_ar * (1 - MAX_THRESHOLD)
         
         if ratio > max_ar:
-            return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > {max_ar:.2f})"}
+            return {"decision": "skip", "reason": f"Image too wide (ratio {ratio:.2f} > {max_ar:.2f})"}, img_ori
         if ratio < min_ar:
-            return {"decision": "skip", "reason": f"Image too narrow (ratio {ratio:.2f} < {min_ar:.2f})"}
+            return {"decision": "skip", "reason": f"Image too narrow (ratio {ratio:.2f} < {min_ar:.2f})"}, img_ori
 
         # Step 3: Analyze with AI
         style_obj = await asyncio.to_thread(
@@ -250,10 +250,11 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
             target_resolution=target_resolution,
             custom_prompt=ai_prompt
         )
+        
         if style_obj.decision == "skip":
-             return {"decision": "skip", "reason": "AI Decision: Skip"}
+             return {"decision": "skip", "reason": "AI Decision: Skip"}, img_ori
              
-        return {
+        results = {
             "image_style": style_obj.image_style,
             "post_purpose": style_obj.post_purpose,
             "decision": style_obj.decision,
@@ -264,9 +265,11 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
             "include_title": style_obj.include_title,
             "_img_size": (width, height)
         }
+        return results, img_ori
+        
     except Exception as e:
         print(f"Error in get_ai_analysis for {post_title}: {e}")
-        return {"decision": "skip", "reason": f"AI Error: {str(e)}"}
+        return {"decision": "skip", "reason": f"AI Error: {str(e)}"}, None
 
 def get_process_strategy(ai_output, img_size=None, target_res=None):
     """
@@ -309,6 +312,7 @@ def get_process_strategy(ai_output, img_size=None, target_res=None):
     padding_color = "white"
 
     # If we have image size, we check thresholds for crop/stretch/pad
+    # This ensures that AI's creative intent doesn't lead to extreme distortion
     if img_size and target_res:
         w, h = img_size
         tw, th = target_res

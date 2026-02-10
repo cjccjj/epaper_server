@@ -51,6 +51,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
     print(f"  Options: clip={clip_pct}%, cost={cost_pct}%, gamma={manual_gamma}, auto_opt={auto_optimize}")
 
     # Mixed strategy: get Top/Day and Hot
+    # Top/Day gives the best recent content, Hot ensures we have variety
     strategies = [
         {"sort": "top", "time": "day", "limit": 15, "label": "Top Day", "type": "recent"},
         {"sort": "hot", "time": "", "limit": 10, "label": "Hot", "type": "old_good"}
@@ -64,20 +65,25 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
     cache["progress"] = "Starting..."
     save_device_reddit_cache(mac, cache)
     
-    # In a manual fetch, we ignore existing cache to force re-analysis/overwrite
-    print(f"  Manual fetch: Ignoring existing cache to force refresh.")
-    existing_posts = {}
+    # In a manual fetch, we clear old cache and files immediately to keep things simple
+    print(f"  Manual fetch: Clearing old cache and files for {mac}")
     
-    # Filename counter per device
+    # 1. Clear files from disk
     clean_mac = mac.replace(":", "").lower()
-    reddit_files = [f for f in os.listdir(BITMAP_DIR) if f.startswith(f"reddit_{clean_mac}_") and f.endswith(".png")]
-    if reddit_files:
-        try:
-            filename_counter = max([int(f.split("_")[-1].split(".")[0]) for f in reddit_files]) + 1
-        except:
-            filename_counter = len(reddit_files)
-    else:
-        filename_counter = 0
+    for f in os.listdir(BITMAP_DIR):
+        if f.startswith(f"reddit_{clean_mac}_"):
+            try:
+                os.remove(os.path.join(BITMAP_DIR, f))
+            except:
+                pass
+    
+    # 2. Reset cache object
+    cache["posts"] = []
+    cache["status"] = "fetching"
+    cache["progress"] = "Starting clean fetch..."
+    save_device_reddit_cache(mac, cache)
+    
+    filename_counter = 0
 
     async with httpx.AsyncClient(headers={"User-Agent": REDDIT_USER_AGENT}) as client:
         for strategy_config in strategies:
@@ -137,9 +143,9 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                         filepath = os.path.join(BITMAP_DIR, filename)
                         
                         try:
-                            # Step 5: AI Analysis (Now includes aspect ratio filter inside)
+                            # Step 5: AI Analysis (Returns strategy + image we already downloaded)
                             print(f"      AI Analysis: Fetching optimization strategy...")
-                            ai_analysis = await ai_optimizer.get_ai_analysis(
+                            ai_analysis, img_ori = await ai_optimizer.get_ai_analysis(
                                 img_url, 
                                 entry.link, 
                                 entry.title, 
@@ -214,11 +220,6 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 strategy["dither_strength"] = dither_strength
                             
                             # Step 7: Final Processing
-                            # We need the original image again for processing (it was downloaded in AI step)
-                            # But since we didn't keep it, we download it again or refactor to keep it.
-                            # For simplicity and given the user's request for "deterministic" processing,
-                            # we download it here.
-                            img_ori = await asyncio.to_thread(image_processor.download_image_simple, img_url)
                             
                             # Determine if we should show the title
                             # If auto_optimize is on, use AI decision. Otherwise, default to False (since we removed UI toggle)
@@ -292,7 +293,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
         print(f"\n[REDDIT FETCH] FAILED: No posts fetched for {mac}. Keeping old cache.")
         return
 
-    # Update cache
+    # Final cache update
     cache["posts"] = all_posts
     cache["last_update"] = datetime.datetime.now()
     cache["config"] = config
@@ -300,14 +301,6 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
     cache["progress"] = ""
     save_device_reddit_cache(mac, cache)
     
-    # Cleanup orphaned files for THIS device
-    reddit_files_on_disk = {f for f in os.listdir(BITMAP_DIR) if f.startswith(f"reddit_{clean_mac}_")}
-    new_filenames = {p["filename"] for p in all_posts if isinstance(p, dict) and "filename" in p}
-    orphaned_files = reddit_files_on_disk - new_filenames
-    for orphan in orphaned_files:
-        try:
-            os.remove(os.path.join(BITMAP_DIR, orphan))
-        except:
-            pass
+    print(f"\n[REDDIT FETCH] COMPLETED for {mac}. Total posts: {len(all_posts)}")
     
     print(f"\n[REDDIT FETCH] COMPLETE: {len(all_posts)} posts stored in cache.")
