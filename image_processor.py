@@ -5,7 +5,7 @@ import numpy as np
 import os
 
 # --- Configuration ---
-OVERLAY_FONT_SIZE = 12  # Default font size for title overlay
+OVERLAY_FONT_SIZE = 14  # Default font size for title overlay
 
 # --- Helper Functions (Core Processing) ---
 
