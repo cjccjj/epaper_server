@@ -79,17 +79,14 @@ def save_device_reddit_cache(mac, cache):
 scheduler = AsyncIOScheduler()
 
 # --- App Lifecycle ---
-# Initialize database
+# Initialize database on module load
 database.init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
-    # (Scheduled updates disabled as per user request)
-    
+    """Manage application startup and shutdown events."""
+    # (Scheduled updates can be added here if needed)
     yield
-    
-    # Shutdown logic
 
 app = FastAPI(lifespan=lifespan)
 
@@ -100,28 +97,24 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    """Simple session-based authentication for admin routes."""
     # Paths that don't require authentication
     open_paths = ["/api/setup", "/api/display", "/api/bitmap", "/api/log", "/login", "/static"]
     
     # Check if path starts with any open paths
     is_open = any(request.url.path.startswith(p) for p in open_paths)
     
-    # Root redirect
+    # Root redirect to admin
     if request.url.path == "/":
         return RedirectResponse(url="/admin")
         
     if not is_open:
-        # Check session cookie
+        # Check session cookie for existence
         session_id = request.cookies.get(SESSION_COOKIE_NAME)
         if not session_id:
             return RedirectResponse(url="/login")
-        
-        # In a real app we'd verify session_id against a DB/store.
-        # For this "simple password" requirement, we just check if it exists.
-        # The login endpoint sets this.
             
-    response = await call_next(request)
-    return response
+    return await call_next(request)
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
@@ -158,14 +151,13 @@ def login_page():
     """
 
 @app.post("/login")
-async def login(response: Response, password: str = Body(None), request: Request = None):
-    # FastAPI Body doesn't work well with form-data by default unless using Form class
-    # But we can grab it from request.form()
+async def login(response: Response, request: Request):
+    """Verify admin password and set session cookie."""
     form_data = await request.form()
     input_password = form_data.get("password")
     
     if input_password == ADMIN_PASSWORD:
-        # Set session cookie for 24 hours
+        # Successful login: set 24h session cookie
         session_id = str(uuid.uuid4())
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie(
@@ -176,8 +168,9 @@ async def login(response: Response, password: str = Body(None), request: Request
             samesite="lax"
         )
         return response
-    else:
-        return RedirectResponse(url="/login?error=1", status_code=303)
+    
+    # Failed login: redirect back with error
+    return RedirectResponse(url="/login?error=1", status_code=303)
 
 async def scheduled_reddit_update():
     """Periodic job to update Reddit content for all active devices."""
@@ -203,17 +196,11 @@ async def initial_fetch_check():
     await scheduled_reddit_update()
 
 async def refresh_device_reddit_cache(mac, db_session=None):
-    """Fetch and dither images for a specific device using the rss_fetcher module."""
-    if db_session is None:
-        db = database.SessionLocal()
-    else:
-        db = db_session
-        
+    """Refetch and process Reddit images for a device."""
+    db = db_session or database.SessionLocal()
     try:
         await rss_fetcher.refresh_device_reddit_cache(
-            mac, 
-            db, 
-            BITMAP_DIR, 
+            mac, db, BITMAP_DIR, 
             load_device_reddit_cache, 
             save_device_reddit_cache
         )
@@ -287,15 +274,18 @@ def get_display(
     refresh_rate: Optional[int] = Header(None, alias="Refresh-Rate"),
     db: Session = Depends(get_db)
 ):
+    """Endpoint for e-paper devices to request the next image to display."""
     if not id:
         raise HTTPException(status_code=400, detail="ID header (MAC address) is required")
 
+    # Find device by API key or MAC
     device = None
     if access_token:
         device = db.query(database.Device).filter(database.Device.api_key == access_token).first()
     if not device:
         device = db.query(database.Device).filter(database.Device.mac_address == id).first()
         
+    # Auto-register if not found (optional behavior)
     if not device and access_token:
         friendly_id = f"DEVICE_{id.replace(':', '')[-6:]}"
         device = database.Device(mac_address=id, api_key=access_token, friendly_id=friendly_id)
@@ -306,25 +296,22 @@ def get_display(
     if not device:
         raise HTTPException(status_code=401, detail="Device not found")
 
-    # Update device status (except last_update_time which we update only on successful response)
+    # Update device telemetry
     device.battery_voltage = battery_voltage
     device.fw_version = fw_version
     device.rssi = rssi
     
-    # Use device's refresh_rate or fallback to provided header or default 60
-    current_refresh_rate = refresh_rate if refresh_rate else device.refresh_rate
-    if not current_refresh_rate:
-        current_refresh_rate = 60
+    # Refresh rate selection
+    current_refresh_rate = refresh_rate if refresh_rate else (device.refresh_rate or 60)
         
-    # Logic to select content based on active dish
-    filename = "placeholder.png" # Fallback
+    # Content selection based on active dish
+    filename = "placeholder.png"
     
     if device.active_dish == "gallery":
         images = sorted(device.images, key=lambda x: x.order)
         if images:
             idx = device.current_image_index % len(images)
-            current_img = images[idx]
-            filename = current_img.filename
+            filename = images[idx].filename
             device.current_image_index = (idx + 1) % len(images)
     elif device.active_dish == "reddit":
         cache = load_device_reddit_cache(id)
@@ -333,10 +320,8 @@ def get_display(
             idx = device.current_image_index % len(posts)
             filename = posts[idx].get("filename", "placeholder.png")
             device.current_image_index = (device.current_image_index + 1) % len(posts)
-        else:
-            filename = "placeholder.png"
     
-    # Update contact time only after successful image selection
+    # Update timing stats
     now_utc = datetime.datetime.now(datetime.UTC)
     now = now_utc.replace(tzinfo=None)
     device.last_update_time = now
@@ -344,9 +329,7 @@ def get_display(
     
     db.commit()
 
-    # Add cache-busting path for CloudFront/CDNs
-    # By putting the timestamp in the path, CloudFront will always see a unique URL
-    # even if it is configured to ignore query strings.
+    # Return display command
     t_bust = int(now_utc.timestamp())
     image_url = f"/api/bitmap/{t_bust}/{filename}"
 

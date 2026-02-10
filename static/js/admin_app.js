@@ -1,17 +1,19 @@
 /**
  * admin_app.js
  * Alpine.js state management for the E-Paper Server Admin UI.
+ * Handles device management, gallery uploads, and Reddit RSS configuration.
  */
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('adminApp', () => ({
-        // --- State ---
+        // --- Core State ---
         devices: [],
         currentMac: localStorage.getItem('lastSelectedMac') || '',
         activeDish: 'gallery',
         currentTab: localStorage.getItem('lastSelectedTab') || 'gallery',
         
-        // Device Settings (bound to UI)
+        // --- Device Settings ---
+        // Basic hardware and metadata for the e-paper device
         deviceSettings: {
             name: '',
             refresh_rate: 30,
@@ -20,20 +22,22 @@ document.addEventListener('alpine:init', () => {
             timezone: 'UTC'
         },
         
-        // Gallery State
-        img: null, // Will hold the Image object
+        // --- Gallery Management ---
+        // State for uploading and processing local images
+        img: null, // Holds the current selected Image object for preview
         galleryItems: [],
         galleryConfig: {
             bitDepth: 'fs4g',
             clip: 22,
             cost: 6,
-            gamma: 0, // Index into [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+            gamma: 0, // Index into gammaLabels
             sharpen: 0.1,
             ditherStrength: 100
         },
         stats: '',
         
-        // Reddit State
+        // --- Reddit Integration ---
+        // Configuration for AI-optimized Reddit RSS fetching
         redditConfig: {
             subreddit: '',
             bit_depth: 2,
@@ -44,18 +48,22 @@ document.addEventListener('alpine:init', () => {
             dither_strength: 1.0,
             auto_optimize: true,
             ai_prompt: ''
+            // show_title removed: decision is now AI-only
         },
         redditPreview: [],
         redditStatus: 'Ready',
         isFetchingReddit: false,
         
-        // UI Helpers
+        // --- UI State Helpers ---
         isAnalyzingAI: false,
-                isUploading: false,
-                aiInfo: '',
+        isUploading: false,
+        aiInfo: '',
         gammaLabels: [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4],
 
-        // --- Init ---
+        /**
+         * Initialize the application.
+         * Sets up image preview listeners and restores last selected device/tab.
+         */
         async init() {
             this.img = new Image();
             this.img.onload = () => this.processImage();
@@ -67,14 +75,14 @@ document.addEventListener('alpine:init', () => {
 
             await this.fetchDevices();
             
-            // Restore last state
+            // Restore last state from localStorage
             if (this.currentMac) {
                 await this.selectDevice(this.currentMac);
             }
             
             this.showTab(this.currentTab);
 
-            // Global click handler for overlay
+            // Global click handler for the image overlay modal
             window.addEventListener('click', (e) => {
                 if (e.target.id === 'overlay') {
                     e.target.style.display = 'none';
@@ -82,17 +90,23 @@ document.addEventListener('alpine:init', () => {
             });
         },
 
-        // --- Device Management ---
+        // --- Device Operations ---
+
+        /**
+         * Fetch the list of registered devices from the backend.
+         */
         async fetchDevices() {
             try {
                 const res = await fetch('/admin/devices');
                 this.devices = await res.json();
-                console.log("Fetched devices:", this.devices);
             } catch (e) {
                 console.error("Failed to fetch devices:", e);
             }
         },
 
+        /**
+         * Select a device and load its specific configurations.
+         */
         async selectDevice(mac) {
             this.currentMac = mac;
             localStorage.setItem('lastSelectedMac', mac);
@@ -115,10 +129,12 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Save basic device settings to the server.
+         */
         async saveDeviceSettings() {
             if (!this.currentMac) return;
             try {
-                // Include both device settings and reddit config to be safe
                 const payload = { 
                     ...this.deviceSettings,
                     reddit_config: this.redditConfig 
@@ -128,12 +144,15 @@ document.addEventListener('alpine:init', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
                 });
-                await this.fetchDevices(); // Refresh list
+                await this.fetchDevices();
             } catch (e) {
                 console.error("Failed to save settings:", e);
             }
         },
 
+        /**
+         * Change the active 'dish' (content source) for the current device.
+         */
         async setActiveDish(dish) {
             this.activeDish = dish;
             await fetch(`/admin/device/${this.currentMac}/settings`, {
@@ -141,12 +160,15 @@ document.addEventListener('alpine:init', () => {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ active_dish: dish })
             });
-            // Update local device object too
             const d = this.devices.find(x => x.mac_address === this.currentMac);
             if (d) d.active_dish = dish;
         },
 
-        // --- Tab Management ---
+        // --- UI Navigation ---
+
+        /**
+         * Switch between admin tabs (Gallery, Reddit, Settings).
+         */
         async showTab(tab) {
             this.currentTab = tab;
             localStorage.setItem('lastSelectedTab', tab);
@@ -156,7 +178,11 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        // --- Gallery Management ---
+        // --- Gallery Image Processing ---
+
+        /**
+         * Load gallery images for the current device.
+         */
         async loadGallery() {
             if (!this.currentMac) return;
             const device = this.devices.find(d => d.mac_address === this.currentMac);
@@ -165,6 +191,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Handle local file selection for gallery upload.
+         */
         handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -176,6 +205,10 @@ document.addEventListener('alpine:init', () => {
             reader.readAsDataURL(file);
         },
 
+        /**
+         * Process the current image using the client-side ImageProcess library.
+         * Updates the preview canvases.
+         */
         processImage() {
             if (!this.img || !this.img.src || this.img.src.length < 100) return;
             
@@ -197,9 +230,12 @@ document.addEventListener('alpine:init', () => {
                 ditherStrength: parseInt(this.galleryConfig.ditherStrength || 0) / 100
             };
  
-            const result = ImageProcess.process(this.img, canvases, options);
+            ImageProcess.process(this.img, canvases, options);
         },
 
+        /**
+         * Trigger client-side AI analysis to suggest optimal processing parameters.
+         */
         async aiOptimize() {
             if (!this.img || !this.img.src) {
                 alert("Please select an image first.");
@@ -210,7 +246,7 @@ document.addEventListener('alpine:init', () => {
             this.aiInfo = "AI is analyzing image...";
             
             try {
-                // Use a temporary canvas to resize for AI analysis
+                // Resize for AI analysis to keep payload small
                 const tempCanvas = document.createElement('canvas');
                 const ctx = tempCanvas.getContext('2d');
                 const tw = parseInt(this.deviceSettings.display_width);
@@ -234,6 +270,7 @@ document.addEventListener('alpine:init', () => {
                 const style = await res.json();
                 
                 if (style && !style.error) {
+                    // Mapping AI classification to technical parameters
                     let sh = 0.2;
                     if (style.has_text_overlay || style.content_type === "text_heavy") sh = 1.0;
                     else if (style.content_type === "comic_illustration") sh = 0.5;
@@ -243,7 +280,6 @@ document.addEventListener('alpine:init', () => {
                     
                     let gmIndex = (style.content_type === "comic_illustration") ? 6 : 0; // 6=2.2, 0=1.0
 
-                    // Update config
                     this.galleryConfig.sharpen = sh;
                     this.galleryConfig.ditherStrength = dt * 100;
                     this.galleryConfig.gamma = gmIndex;
@@ -264,6 +300,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Upload the processed image from the dithered canvas to the gallery.
+         */
         async uploadToGallery() {
             const canvas = document.getElementById('cDither');
             if (!canvas || !this.currentMac) return;
@@ -284,7 +323,6 @@ document.addEventListener('alpine:init', () => {
                 if (res.ok) {
                     await this.fetchDevices();
                     await this.loadGallery();
-                    // Successfully uploaded
                 } else {
                     alert("Upload failed.");
                 }
@@ -296,6 +334,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Delete a specific image from the gallery.
+         */
         async deleteImage(imageId) {
             if (!confirm("Delete this image?")) return;
             try {
@@ -309,12 +350,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async setAsActive(filename) {
-            // Backend currently cycles through images, so "set active" is not explicitly supported
-            // via a dedicated endpoint. We could implement current_image_index update if needed.
-            console.log("Set as active currently not supported by backend cycling logic.");
-        },
-
+        /**
+         * Show full-size image in the overlay modal.
+         */
         showOverlay(url) {
             const overlay = document.getElementById('overlay');
             const overlayImg = document.getElementById('overlayImg');
@@ -322,7 +360,11 @@ document.addEventListener('alpine:init', () => {
             overlay.style.display = 'flex';
         },
 
-        // --- Reddit Management ---
+        // --- Reddit RSS Management ---
+
+        /**
+         * Load Reddit RSS configuration for the current device.
+         */
         async loadRedditConfig() {
             if (!this.currentMac) return;
             const device = this.devices.find(d => d.mac_address === this.currentMac);
@@ -332,6 +374,9 @@ document.addEventListener('alpine:init', () => {
             await this.loadRedditPreview();
         },
 
+        /**
+         * Save Reddit configuration to the server.
+         */
         async saveRedditConfig(showSuccess = true, refreshPreview = true) {
             if (!this.currentMac) return;
             try {
@@ -345,7 +390,7 @@ document.addEventListener('alpine:init', () => {
                         this.redditStatus = '<span style="color: #10b981;">✅ Config Saved</span>';
                         setTimeout(() => { this.redditStatus = 'Ready'; }, 3000);
                     }
-                    await this.fetchDevices(); // Refresh global state
+                    await this.fetchDevices();
                     if (refreshPreview) await this.loadRedditPreview();
                 }
             } catch (e) {
@@ -353,6 +398,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Load the list of processed Reddit posts (preview).
+         */
         async loadRedditPreview() {
             if (!this.currentMac) return;
             try {
@@ -364,6 +412,10 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Trigger an immediate fetch of Reddit RSS content.
+         * Polls the server for progress updates.
+         */
         async fetchRedditNow() {
             this.isFetchingReddit = true;
             this.redditStatus = '⏳ Saving & Fetching...';
@@ -399,14 +451,20 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Handle subreddit name changes.
+         * Title inclusion logic is now fully AI-driven.
+         */
         handleRedditSubChange() {
-            const memes = ['memes', 'dankmemes', 'AdviceAnimals', 'wholesomememes', 'PrequelMemes', 'HistoryMemes', 'trippinthroughtime', 'me_irl', 'Antimeme', 'StarterPacks'];
-            this.redditConfig.show_title = !memes.includes(this.redditConfig.subreddit);
+            // AI now decides title inclusion automatically.
+            // Subreddit-specific logic for title toggling is removed.
         },
 
+        /**
+         * Set the bit depth for Reddit image processing and apply presets if AI is off.
+         */
         setRedditBitDepth(depth) {
             this.redditConfig.bit_depth = parseInt(depth);
-            // Presets for other values, but only if AI Auto is OFF
             if (!this.redditConfig.auto_optimize) {
                 if (this.redditConfig.bit_depth === 2) {
                     this.redditConfig.gamma_index = 6; // 2.2
@@ -418,6 +476,9 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /**
+         * Clear the Reddit cache and delete associated images for the current device.
+         */
         async clearRedditCache() {
             if (!this.currentMac) return;
             if (!confirm("Are you sure you want to clear the Reddit cache and delete all processed images?")) return;

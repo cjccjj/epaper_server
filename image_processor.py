@@ -5,13 +5,18 @@ import numpy as np
 import os
 
 # --- Configuration ---
-OVERLAY_FONT_SIZE = 14  # Default font size for title overlay
+OVERLAY_FONT_SIZE = 12  # Consistent with dejavu_bold_outline_12.png test
+OVERLAY_MARGIN = 10     # Bottom margin for title
+OVERLAY_SPACING = 2     # Spacing between lines
 
 # --- Helper Functions (Core Processing) ---
 
 def download_image_simple(url):
-    """Download image from URL and return as PIL Image object."""
-    headers = {"User-Agent": "linux:epaper-server:v1.0.0 (by /u/cj)"}
+    """
+    Download image from URL and return as PIL Image object.
+    Includes a browser-like User-Agent to avoid blocks.
+    """
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -23,6 +28,7 @@ def download_image_simple(url):
 def fit_resize(img, target_size=(400, 300)):
     """
     Resize and crop image to fill target_size (Crop-to-fill).
+    Maintains aspect ratio by cropping excess from edges.
     """
     tw, th = target_size
     iw, ih = img.size
@@ -39,13 +45,19 @@ def fit_resize(img, target_size=(400, 300)):
     return target
 
 def sharpen_image(img, amount=1.0):
-    """Apply UnsharpMask sharpening to a PIL image."""
+    """
+    Apply UnsharpMask sharpening to a PIL image.
+    Helps improve detail on e-paper's limited bit depth.
+    """
     if amount <= 0:
         return img
     return img.filter(ImageFilter.UnsharpMask(radius=1, percent=int(amount * 100), threshold=3))
 
 def apply_ac(data, clip_pct=22, cost_pct=6):
-    """Weighted Approaching Auto-Contrast logic."""
+    """
+    Approaching Auto-Contrast (AC) logic.
+    Tries to maximize contrast while minimizing 'damage' to important tonal areas.
+    """
     h, w = data.shape
     hist, _ = np.histogram(data, bins=256, range=(0, 256))
     
@@ -66,6 +78,7 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     clipped_total = 0
     total_cost = 0
     
+    # 1. Minimum safety clip
     while left < 255 and clipped_black < min_target:
         clipped_black += hist[left]
         clipped_total += hist[left]
@@ -75,6 +88,7 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
         clipped_total += hist[right]
         right -= 1
 
+    # 2. Iterative contrast expansion based on 'cost'
     while left < right and total_cost < target_cost and clipped_total < target_area:
         costL = hist[left] * abs(left - avg)
         costR = hist[right] * abs(right - avg)
@@ -94,7 +108,10 @@ def apply_ac(data, clip_pct=22, cost_pct=6):
     return data.astype(np.uint8)
 
 def apply_fs(data, strength=1.0):
-    """1-bit Floyd-Steinberg Dithering with serpentine scan."""
+    """
+    1-bit Floyd-Steinberg Dithering with serpentine scan.
+    Reduces banding artifacts in grayscale-to-black/white conversion.
+    """
     h, w = data.shape
     out = data.astype(np.float32)
     
@@ -121,7 +138,10 @@ def apply_fs(data, strength=1.0):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 def apply_4g_fs(data, strength=1.0):
-    """4-level Floyd-Steinberg Dithering (0, 85, 170, 255)."""
+    """
+    4-level (2-bit) Floyd-Steinberg Dithering (0, 85, 170, 255).
+    Optimized for 4-gray e-paper displays.
+    """
     h, w = data.shape
     out = data.astype(np.float32)
     
@@ -148,14 +168,17 @@ def apply_4g_fs(data, strength=1.0):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 def load_global_font(size=None):
-    """Load TTF font for text overlay."""
+    """
+    Load TTF font for text overlay.
+    Prioritizes DejaVuSans-Bold for the 'outline' effect requested by user.
+    """
     if size is None:
         size = OVERLAY_FONT_SIZE
         
     font_paths = [
         os.path.join(os.path.dirname(__file__), "static/DejaVuSans-Bold.ttf"),
-        os.path.join(os.path.dirname(__file__), "static/ntailu.ttf"),
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        os.path.join(os.path.dirname(__file__), "static/ntailu.ttf"),
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     ]
     for path in font_paths:
@@ -166,20 +189,21 @@ def load_global_font(size=None):
     return ImageFont.load_default()
 
 def overlay_title(img, title, font_size=None):
-    """Overlay title on the bottom of the image with outline, max 2 lines."""
+    """
+    Overlay title on the bottom of the image with outline, max 2 lines.
+    Aligns text center and uses bottom-up drawing for multi-line support.
+    """
     if not title: return img
     
     if font_size is None:
         font_size = OVERLAY_FONT_SIZE
         
-    # User preference: dejavu_bold_outline style
-    # We use DejaVuSans-Bold and ensure it's centered with white outline.
     font = load_global_font(font_size)
     draw = ImageDraw.Draw(img)
     w, h = img.size
     
     # Estimate characters per line (approx 20-30 for 400px width at 12px)
-    # We'll use a conservative estimate based on font_size
+    # Estimate: (width - padding) / (avg_char_width)
     chars_per_line = int((w - 20) / (font_size * 0.6)) 
     
     words = title.split()
@@ -207,35 +231,29 @@ def overlay_title(img, title, font_size=None):
             lines[1] = lines[1][:chars_per_line-3] + "..."
     elif len(lines) == 1:
         if len(lines[0]) > chars_per_line - 3:
-             # If it's just one line but it's super long, try to split it or truncate
              if len(lines[0]) > chars_per_line * 1.5:
                  split_point = chars_per_line
                  lines = [lines[0][:split_point], lines[0][split_point:split_point+chars_per_line-3] + "..."]
              else:
                  lines[0] = lines[0][:chars_per_line-3] + "..."
 
-    # Draw lines from bottom up
-    # y = h - 10 (margin) - line_height
-    line_spacing = 2
+    # Get line height for positioning
     bbox = draw.textbbox((0, 0), "Ay", font=font)
     line_h = bbox[3] - bbox[1]
     
-    # dejavu_bold_outline style uses a 1px stroke for the outline effect
-    # We use DejaVuSans-Bold as the base font, which gives a clean bold look.
-    main_stroke = 0
-    
+    # Draw lines from bottom up
     for i, line in enumerate(reversed(lines)):
-        text_bbox = draw.textbbox((0, 0), line, font=font, stroke_width=main_stroke)
+        text_bbox = draw.textbbox((0, 0), line, font=font)
         tw = text_bbox[2] - text_bbox[0]
         x = (w - tw) // 2
-        y = h - 10 - (i + 1) * (line_h + line_spacing)
+        y = h - OVERLAY_MARGIN - (i + 1) * (line_h + OVERLAY_SPACING)
         
-        # White outline (drawn manually for maximum compatibility/control)
+        # White outline (8-way 1px offset for the 'outline' effect)
         for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
-            draw.text((x + dx, y + dy), line, font=font, fill=255, stroke_width=main_stroke)
+            draw.text((x + dx, y + dy), line, font=font, fill=255)
         
         # Black main text
-        draw.text((x, y), line, font=font, fill=0, stroke_width=main_stroke)
+        draw.text((x, y), line, font=font, fill=0)
         
     return img
 

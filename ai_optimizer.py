@@ -11,12 +11,17 @@ from typing import Literal
 client = OpenAI()
 
 # --- Thresholds & Constraints ---
-# These define when we skip images or choose specific resize methods
-CROP_THRESHOLD = 0.5    # Max 20% crop allowed
-STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed
-PAD_THRESHOLD = 0.5     # Max 35% padding allowed before skipping
+# These constants define the limits for various image transformation methods.
+# If a method (crop/stretch/pad) exceeds these limits, we skip the image.
+CROP_THRESHOLD = 0.5    # Max 50% crop allowed (AI must confirm it's safe)
+STRETCH_THRESHOLD = 0.3  # Max 30% distortion allowed (mostly for memes)
+PAD_THRESHOLD = 0.5     # Max 50% padding allowed before skipping
 
 class ImageRenderIntent(BaseModel):
+    """
+    Structured output from OpenAI Vision analysis.
+    Maps high-level image understanding to technical processing parameters.
+    """
     # 1. Classification (Step 0 in prompt)
     image_style: Literal[
         "photography", "screenshot", "meme", "illustration", "comic", "diagram", "mixed"
@@ -32,12 +37,12 @@ class ImageRenderIntent(BaseModel):
     resize_strategy: Literal["stretch", "crop", "pad_white", "pad_black"]
 
     # 4. Processing Parameters (Steps 3, 4, 5 in prompt)
-    gamma: float   # 1.0 - 2.4
-    sharpen: float # 0.0 - 2.0
-    dither: int    # 0 - 100
+    gamma: float   # 1.0 - 2.4 (Higher = brighter shadows)
+    sharpen: float # 0.0 - 2.0 (Higher = crisper edges)
+    dither: int    # 0 - 100 (Higher = more noise/gradients)
 
     # 5. Title Overlay (Step 6 in prompt)
-    include_title: bool
+    include_title: bool # AI decides if post title adds value or clutters
 
 DEFAULT_SYSTEM_PROMPT = """
 You are an e‑paper image optimization assistant.
@@ -98,8 +103,8 @@ Skip the image if ANY of the following apply:
 Target is to maximize screen usage.
 
 Choose ONE:
-- Stretch: For humor or casual images, even with text inside, stretching increases readability.
-- Crop: For artistic images, crop unless the main subject extends to the edge. For images with text inside, avoid cropping.
+- Stretch: Only for memes, even with text inside, stretching increases readability.
+- Crop: For artistic, informational, showcase imagee,  crop unless the main subject extends to the edge. For images with text inside, avoid cropping. If there is unwanted whitespace on all 4 sides, consider a crop too.
 - Fit with padding: Keep aspect ratio; use when stretch or crop is unsafe.
 
 If padding is used:
@@ -138,8 +143,8 @@ Purpose: decide whether to place the Post Title near the bottom of the image for
 
 Guidelines:
 - Do not add if the image already contains text
-- Do not add if the image is self‑explanatory
-- Add if the image alone is unclear and the Post Title adds meaningful context
+- Do not add if the image is self‑explanatory like artistic
+- Add if the Post Title adds meaningful context
 
 ────────────────────────
 OUTPUT RULES
@@ -183,7 +188,7 @@ def analyze_image(image_input, post_title="", post_url="", target_resolution=(40
 
     try:
         completion = client.beta.chat.completions.parse(
-            model="gpt-5-mini", # Switch to gpt-5-mini as requested
+            model="gpt-4o-mini", # Standard mini model with vision
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
