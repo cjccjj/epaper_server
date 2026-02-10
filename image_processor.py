@@ -4,9 +4,12 @@ import io
 import numpy as np
 import os
 import ai_stylist
+import reddit_ai
+import asyncio
 
 # Configuration
-STRETCH_THRESHOLD = 0.33  # If padding ratio is less than this, stretch image instead of padding
+CROP_THRESHOLD = 0.12
+STRETCH_THRESHOLD = 0.30
 
 def check_ratio_fit(img, target_size=(400, 300), threshold=STRETCH_THRESHOLD):
     """
@@ -104,8 +107,8 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
     
     # 5. Gamma Correction
     if gamma_val != 1.0:
-        # Clamp gamma between 0.7 and 1.3 per AI design.md
-        gamma_val = max(0.7, min(1.3, gamma_val))
+        # User request: gamma range 1.0 - 2.4
+        gamma_val = max(1.0, min(2.4, gamma_val))
         data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
     
     data = data.astype(np.uint8)
@@ -122,12 +125,9 @@ def process_with_ai_strategy(img_ori, target_size, ai_analysis, strategy, title=
         out_img = Image.fromarray(data).convert("L")
         
     # 8. Text Overlay (Step 7)
-    # Use AI's analysis for text_density and show_titles preference
-    # If text_density is high, we might want to skip title overlay to avoid clutter
-    text_density = ai_analysis.get("text_density", "none")
     show_titles_config = ai_analysis.get("show_titles", True)
     
-    if title and show_titles_config and text_density != "high":
+    if title and show_titles_config:
         out_img = overlay_title(out_img, title)
         
     # Build debug info string
@@ -432,109 +432,49 @@ def save_as_png(img, path, bit_depth=1):
 
 def process_and_dither(img, target_size=(400, 300), clip_pct=22, cost_pct=6, resize_mode='fit', 
                        stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1, 
-                       apply_gamma=False, dither_mode='burkes', dither_strength=1.0,
+                       apply_gamma=False, dither_mode='fs', dither_strength=1.0,
                        sharpen_amount=0.0, auto_optimize=False):
-    # 1. Resize
-    img = fit_resize(img, target_size, stretch_threshold=stretch_threshold)
-    
+    """
+    Legacy/Manual processing entry point. 
+    If auto_optimize is True, it uses the new AI strategy pipeline.
+    """
     ai_labels = None
-    # 2. AI Optimization (if requested)
+    strategy = {
+        "resize_method": "padding" if resize_mode == "fit" else resize_mode,
+        "padding_color": "white",
+        "gamma": float(apply_gamma) if not isinstance(apply_gamma, bool) else (2.2 if apply_gamma else 1.0),
+        "sharpen": sharpen_amount,
+        "dither_strength": dither_strength
+    }
+
+    # 1. AI Optimization
     if auto_optimize:
         try:
-            style = ai_stylist.analyze_image(img)
-            ai_labels = style.model_dump() if style else None
+            # For Gallery/Manual upload, we don't have post_url/title usually
+            style_obj = ai_stylist.analyze_image(img, target_resolution=target_size)
+            ai_labels = style_obj.model_dump()
+            
+            # Use the same strategy logic as Reddit
+            strategy_obj = reddit_ai.get_process_strategy(ai_labels, img_size=img.size, target_res=target_size)
+            
+            if strategy_obj.get("decision") == "skip":
+                print(f"Gallery AI: Decision is SKIP based on thresholds.")
+            
+            strategy.update(strategy_obj)
+            print(f"Gallery AI strategy: {strategy}")
+            
         except Exception as e:
             print(f"Error in Gallery AI analysis: {e}")
-            # Fallback to a safe default object if AI fails
-            ai_labels = {
-                "decision": "use",
-                "image_style": "photography",
-                "post_purpose": "others",
-                "resize_strategy": "pad_white",
-                "gamma": 1.0,
-                "sharpen": 0.5,
-                "dither": 50
-            }
-            # Create a mock style object for the rest of the logic
-            from ai_stylist import ImageRenderIntent
-            style = ImageRenderIntent(**ai_labels)
-        
-        print(f"AI Optimization labels: {ai_labels}")
-        
-        # Mapping labels to parameters
-        # 1. Sharpening: aggressive for text, moderate for comics (to keep lines clean), low for photos
-        if style.has_text_overlay or style.content_type == "text_heavy":
-            sharpen_amount = 1.0
-        elif style.content_type == "comic_illustration":
-            sharpen_amount = 0.5
-        else:
-            sharpen_amount = 0.2
-            
-        # 2. Dithering: low for flat colors (comics), high for photos
-        if style.gradient_complexity == "low":
-            dither_strength = 0.4
-        else:
-            dither_strength = 1.0
-            
-        # 3. Gamma: 
-        # For comics/illustrations, we often want more punchy contrast (higher gamma to darken mids or keep them clean)
-        # For photos, 2.2 is standard.
-        if style.content_type == "comic_illustration":
-            apply_gamma = 2.2 # Use 2.2 gamma
-        else:
-            apply_gamma = 1.0 # Use linear/no-gamma (default)
 
-        # Record applied settings in labels for UI transparency
-        if ai_labels:
-            ai_labels["applied"] = {
-                "sharpen": f"{int(sharpen_amount*100)}%",
-                "dither": f"{int(dither_strength*100)}%",
-                "gamma": f"{apply_gamma}" if apply_gamma > 1.0 else "1.0"
-            }
-            
-    # 3. Sharpening
-    if sharpen_amount > 0:
-        img = sharpen_image(img, sharpen_amount)
-
-    # 4. Convert to grayscale
-    img = img.convert("L")
-    data = np.array(img).astype(np.float32)
-    
-    # Apply Gamma Correction if requested
-    # apply_gamma can be a boolean (True=2.2, False=1.0) or a float
-    gamma_val = 1.0
-    if isinstance(apply_gamma, bool):
-        gamma_val = 2.2 if apply_gamma else 1.0
-    else:
-        try:
-            gamma_val = float(apply_gamma)
-        except:
-            gamma_val = 1.0
-            
-    if gamma_val > 1.0:
-        data = 255.0 * np.power(data / 255.0, 1.0 / gamma_val)
-    
-    data = data.astype(np.uint8)
-    
-    # 5. Apply Weighted Approaching Auto-Contrast
-    data = apply_ac(data, clip_pct, cost_pct)
-    
-    # 6. Apply Dithering
-    if bit_depth == 1:
-        # 1-bit: Use FS (Burkes is removed as requested)
-        data = apply_fs(data, strength=dither_strength)
-        out_img = Image.fromarray(data).convert("1")
-    else:
-        # 2-bit (4G)
-        # Always use 4G FS as planned
-        data = apply_4g_fs(data, strength=dither_strength)
-        out_img = Image.fromarray(data).convert("L")
-    
-    # 7. Overlay title if provided
-    if title:
-        out_img = overlay_title(out_img, title)
+    # 2. Process using the consolidated strategy pipeline
+    out_img, debug_info = process_with_ai_strategy(
+        img, target_size, ai_labels or {}, strategy, 
+        title=title, bit_depth=bit_depth, 
+        clip_pct=clip_pct, cost_pct=cost_pct
+    )
         
     return out_img, ai_labels
+
 
 def process_image_url(url, output_path, target_size=(400, 300), resize_mode='fit', 
                       stretch_threshold=STRETCH_THRESHOLD, title=None, bit_depth=1,

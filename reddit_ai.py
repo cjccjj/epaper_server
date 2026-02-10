@@ -31,7 +31,7 @@ async def get_ai_analysis(img_url, post_url, post_title, target_resolution, ai_p
             "dither": 50
         }
 
-async def get_process_strategy(ai_output, img_size=None, target_res=None):
+def get_process_strategy(ai_output, img_size=None, target_res=None):
     """
     Process Strategy Interface: Converts AI analysis into technical parameters.
     Input: 

@@ -410,7 +410,7 @@ async def refresh_device_reddit_cache(mac, db_session=None):
                                     continue
                                 
                                 # Step 7: Get technical strategy (with threshold checks)
-                                strategy = await reddit_ai.get_process_strategy(ai_analysis, img_size=img_ori.size, target_res=(width, height))
+                                strategy = reddit_ai.get_process_strategy(ai_analysis, img_size=img_ori.size, target_res=(width, height))
                                 
                                 if strategy.get("decision") == "skip":
                                     print(f"      DECISION: SKIP (Strategy thresholds failed)")
