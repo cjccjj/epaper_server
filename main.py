@@ -395,11 +395,9 @@ def get_display(
     
     db.commit()
 
-    # Add cache-busting path for CloudFront/CDNs
-    # By putting the timestamp in the path, CloudFront will always see a unique URL
-    # even if it is configured to ignore query strings.
-    t_bust = int(now_utc.timestamp())
-    image_url = f"/api/bitmap/{t_bust}/{filename}"
+    # Return simplified image URL without timestamp
+    # Our filenames now include hashes which provide natural cache-busting
+    image_url = f"/api/bitmap/{filename}"
 
     return {
         "status": 0,
@@ -412,9 +410,8 @@ def get_display(
         "special_function": None
     }
 
-@app.get("/api/bitmap/{timestamp}/{filename}")
 @app.get("/api/bitmap/{filename}")
-def serve_bitmap(filename: str, timestamp: Optional[str] = None):
+def serve_bitmap(filename: str):
     path = os.path.join(BITMAP_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Bitmap not found")
