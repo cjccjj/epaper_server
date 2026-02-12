@@ -10,6 +10,7 @@ document.addEventListener('alpine:init', () => {
         currentMac: localStorage.getItem('lastSelectedMac') || '',
         activeDish: 'gallery',
         currentTab: localStorage.getItem('lastSelectedTab') || 'gallery',
+        baseUrl: '',
         
         // Device Settings (bound to UI)
         deviceSettings: {
@@ -79,6 +80,7 @@ document.addEventListener('alpine:init', () => {
             };
 
             await this.fetchDevices();
+            await this.fetchConfig();
             
             // Restore last state
             if (this.currentMac) {
@@ -103,6 +105,16 @@ document.addEventListener('alpine:init', () => {
                 console.log("Fetched devices:", this.devices);
             } catch (e) {
                 console.error("Failed to fetch devices:", e);
+            }
+        },
+
+        async fetchConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                this.baseUrl = config.base_url || '';
+            } catch (e) {
+                console.error("Failed to fetch server config:", e);
             }
         },
 

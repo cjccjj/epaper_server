@@ -156,6 +156,9 @@
                 </template>
             </select>
         </div>
+        <div x-show="baseUrl" class="stats" style="margin-left: auto; color: var(--primary);">
+            Base URL: <span x-text="baseUrl" style="font-weight: bold;"></span>
+        </div>
     </div>
 
     <div x-show="currentMac" class="content-area">

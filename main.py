@@ -24,6 +24,7 @@ from typing import Optional, List
 BITMAP_DIR = "bitmaps"
 DATA_DIR = "data"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "z0000l")
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 SESSION_COOKIE_NAME = "admin_session"
 SESSION_EXPIRY_HOURS = 24
 REDDIT_CACHE_FILE = os.path.join(DATA_DIR, "reddit_cache.json")
@@ -115,6 +116,12 @@ async def lifespan(app: FastAPI):
     # Shutdown logic
 
 app = FastAPI(lifespan=lifespan)
+
+@app.get("/api/config")
+def get_server_config():
+    return {
+        "base_url": BASE_URL
+    }
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -397,7 +404,11 @@ def get_display(
 
     # Return simplified image URL without timestamp
     # Our filenames now include hashes which provide natural cache-busting
-    image_url = f"/api/bitmap/{filename}"
+    # Always return full URL if BASE_URL is configured
+    if BASE_URL:
+        image_url = f"{BASE_URL}/api/bitmap/{filename}"
+    else:
+        image_url = f"/api/bitmap/{filename}"
 
     return {
         "status": 0,
