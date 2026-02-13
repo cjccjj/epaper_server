@@ -71,6 +71,7 @@ document.addEventListener('alpine:init', () => {
 
         // --- Init ---
         async init() {
+            // 1. Basic Setup
             this.img = new Image();
             this.img.onload = () => this.processImage();
             this.img.onerror = () => {
@@ -79,27 +80,29 @@ document.addEventListener('alpine:init', () => {
                 }
             };
 
-            await this.fetchDevices();
-            await this.fetchConfig();
+            // 2. Fetch Data
+            await Promise.all([
+                this.fetchDevices(),
+                this.fetchConfig()
+            ]);
             
-            // Restore last state with a slight delay to ensure x-for template is rendered
-            const lastMac = localStorage.getItem('lastSelectedMac');
-            if (lastMac) {
-                // Wait for Alpine to render the options from fetchDevices
-                this.$nextTick(async () => {
-                    if (this.devices.some(d => d.mac_address === lastMac)) {
-                        await this.selectDevice(lastMac);
-                    }
-                });
+            // 3. Restore Selection
+            const savedMac = localStorage.getItem('lastSelectedMac');
+            if (savedMac && this.devices.some(d => d.mac_address === savedMac)) {
+                this.currentMac = savedMac;
+            } else if (this.devices.length > 0) {
+                this.currentMac = this.devices[0].mac_address;
             }
             
+            // 4. Initial Load
+            if (this.currentMac) {
+                await this.selectDevice(this.currentMac);
+            }
             this.showTab(this.currentTab);
 
             // Global click handler for overlay
             window.addEventListener('click', (e) => {
-                if (e.target.id === 'overlay') {
-                    e.target.style.display = 'none';
-                }
+                if (e.target.id === 'overlay') e.target.style.display = 'none';
             });
         },
 
@@ -125,29 +128,41 @@ document.addEventListener('alpine:init', () => {
         },
 
         async selectDevice(mac) {
+            if (!mac) return;
             this.currentMac = mac;
             localStorage.setItem('lastSelectedMac', mac);
             
             const device = this.devices.find(d => d.mac_address === mac);
-            if (device) {
-                this.deviceSettings = {
-                    name: device.name,
-                    refresh_rate: device.refresh_rate,
-                    display_width: device.display_width,
-                    display_height: device.display_height,
-                    timezone: device.timezone,
-                    enabled_dishes: device.enabled_dishes || ['gallery'],
-                    display_mode: device.display_mode || 'sequence'
-                };
-                this.activeDish = device.active_dish || 'gallery';
-                
-                await this.loadGallery();
-                if (this.currentTab === 'reddit') {
-                    await this.loadRedditConfig();
-                } else if (this.currentTab === 'rss') {
-                    await this.loadRssConfig();
-                }
-            }
+            if (!device) return;
+
+            // Update local settings from device object
+            this.deviceSettings = {
+                name: device.name,
+                refresh_rate: device.refresh_rate,
+                display_width: device.display_width,
+                display_height: device.display_height,
+                timezone: device.timezone,
+                enabled_dishes: device.enabled_dishes || ['gallery'],
+                display_mode: device.display_mode || 'sequence'
+            };
+            this.activeDish = device.active_dish || 'gallery';
+            
+            // Centralized config loading based on current state
+            await this.refreshCurrentTab();
+        },
+
+        async refreshCurrentTab() {
+            if (!this.currentMac) return;
+            
+            if (this.currentTab === 'gallery') await this.loadGallery();
+            else if (this.currentTab === 'reddit') await this.loadRedditConfig();
+            else if (this.currentTab === 'rss') await this.loadRssConfig();
+        },
+
+        async showTab(tab) {
+            this.currentTab = tab;
+            localStorage.setItem('lastSelectedTab', tab);
+            await this.refreshCurrentTab();
         },
 
         async saveDeviceSettings() {
@@ -201,18 +216,6 @@ document.addEventListener('alpine:init', () => {
             }
             
             await this.saveDeviceSettings();
-        },
-
-        // --- Tab Management ---
-        async showTab(tab) {
-            this.currentTab = tab;
-            localStorage.setItem('lastSelectedTab', tab);
-            
-            if (tab === 'reddit' && this.currentMac) {
-                await this.loadRedditConfig();
-            } else if (tab === 'rss' && this.currentMac) {
-                await this.loadRssConfig();
-            }
         },
 
         // --- Gallery Management ---

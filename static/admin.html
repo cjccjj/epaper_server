@@ -39,24 +39,18 @@
         select, option { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
         
         .device-selector select {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-            font-weight: bold !important;
-            border: 2px solid var(--primary) !important;
+            background-color: #ffffff;
+            color: #000000;
+            font-weight: bold;
+            border: 2px solid var(--primary);
             min-width: 180px;
             padding: 6px 10px;
             border-radius: 4px;
             cursor: pointer;
-            display: inline-block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            appearance: auto !important;
-            -webkit-appearance: auto !important;
         }
         .device-selector option {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-            padding: 4px;
+            background-color: #ffffff;
+            color: #000000;
         }
         
         /* Content Area */
@@ -149,10 +143,10 @@
     <div class="admin-header">
         <h2>E-Paper Admin</h2>
         <div class="device-selector">
-            <select x-model="currentMac" @change="selectDevice($event.target.value)">
+            <select :value="currentMac" @change="selectDevice($event.target.value)">
                 <option value="">-- Select Device --</option>
                 <template x-for="device in devices" :key="device.mac_address">
-                    <option :value="device.mac_address" x-text="(device.friendly_id || device.mac_address) || 'Device'" style="color: #000000 !important; background: #ffffff !important;"></option>
+                    <option :value="device.mac_address" x-text="device.friendly_id || device.mac_address" :selected="device.mac_address === currentMac"></option>
                 </template>
             </select>
         </div>
@@ -162,6 +156,7 @@
     </div>
 
     <div x-show="currentMac" class="content-area">
+        <!-- Section 1: Device Configuration -->
         <div class="device-info">
             <div class="device-header">
                 <h3 x-text="deviceSettings.name || 'Device'">Device</h3>
@@ -195,76 +190,67 @@
                     </select>
                 </div>
             </div>
-            <div class="device-meta">
-                <template x-if="currentMac">
-                    <span x-text="`MAC: ${currentMac}`"></span>
-                </template>
-            </div>
             
-            <!-- Dish Selector -->
             <div class="dish-selector-row" style="flex-wrap: wrap; gap: 20px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <label>Enable Sources:</label>
+                    <label>Sources:</label>
                     <div class="dish-toggle-group">
                         <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('gallery') }" @click="toggleDish('gallery')">🖼️ Gallery</button>
-                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('reddit') }" @click="toggleDish('reddit')">Reddit Top</button>
-                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('rss') }" @click="toggleDish('rss')">📰 Rss</button>
+                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('reddit') }" @click="toggleDish('reddit')">Reddit</button>
+                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('rss') }" @click="toggleDish('rss')">📰 RSS</button>
                     </div>
                 </div>
                 
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <label>Display Mode:</label>
-                    <select x-model="deviceSettings.display_mode" @change="saveDeviceSettings" style="height: 28px; font-size: 11px; padding: 2px 6px;">
-                        <option value="sequence">Sequence (Cycle sources)</option>
-                        <option value="random">Random (Shuffle sources)</option>
+                    <label>Mode:</label>
+                    <select x-model="deviceSettings.display_mode" @change="saveDeviceSettings" style="height: 28px; font-size: 11px;">
+                        <option value="sequence">Sequence</option>
+                        <option value="random">Random</option>
                     </select>
                 </div>
+                <div class="stats" x-text="`MAC: ${currentMac}`" style="margin-left: auto; opacity: 0.5;"></div>
             </div>
         </div>
 
-        <!-- Tabs Bar -->
+        <!-- Section 2: Tabbed Source Configuration -->
         <div class="tab-bar">
-            <button class="tab-btn" :class="{ active: currentTab === 'gallery' }" @click="showTab('gallery')">🖼️ Gallery Config</button>
-            <button class="tab-btn" :class="{ active: currentTab === 'reddit' }" @click="showTab('reddit')">Reddit Config</button>
-            <button class="tab-btn" :class="{ active: currentTab === 'rss' }" @click="showTab('rss')">📰 Rss Config</button>
+            <button class="tab-btn" :class="{ active: currentTab === 'gallery' }" @click="showTab('gallery')">🖼️ Gallery</button>
+            <button class="tab-btn" :class="{ active: currentTab === 'reddit' }" @click="showTab('reddit')">Reddit</button>
+            <button class="tab-btn" :class="{ active: currentTab === 'rss' }" @click="showTab('rss')">📰 RSS</button>
         </div>
 
-        <!-- Rss Dish Panel -->
+        <!-- RSS Source Panel -->
         <div x-show="currentTab === 'rss'" class="tab-content">
-            <div class="config-container" style="max-width: 600px;">
-                <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
-                    <div class="config-group" style="flex: 1;">
-                        <label>RSS URL</label>
-                        <input type="text" x-model="rssConfig.url" placeholder="https://example.com/feed.xml" style="width: 100%;">
-                    </div>
-                    <button class="btn-fetch" @click="fetchRssNow()" :disabled="isFetchingRss" style="height: 32px; font-size: 11px; margin-top: 18px;">
-                        <span x-text="isFetchingRss ? '⏳ Fetching...' : '⚡ Fetch Now'"></span>
-                    </button>
-                </div>
-                
-                <div class="config-row" style="background: rgba(16, 185, 129, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(16, 185, 129, 0.2);">
-                    <div style="font-size: 11px; color: #10b981; font-weight: bold;">📰 General RSS Feed Parser</div>
-                    <div x-html="rssStatus" style="font-size: 11px; color: var(--text-dim);">Ready</div>
-                </div>
-
+            <div class="config-container">
                 <div class="config-row">
                     <div class="config-group">
-                        <label>Bit Depth</label>
-                        <div class="segmented-control">
-                            <button class="segment-btn" :class="{ active: rssConfig.bit_depth === 1 }" @click="rssConfig.bit_depth = 1; saveRssConfig()">1bit (BW)</button>
-                            <button class="segment-btn" :class="{ active: rssConfig.bit_depth === 2 }" @click="rssConfig.bit_depth = 2; saveRssConfig()">2bit (4G)</button>
-                        </div>
-                    </div>
-                    <div class="config-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-                        <input type="checkbox" id="rssAutoOpt" x-model="rssConfig.auto_optimize" @change="saveRssConfig()">
-                        <label for="rssAutoOpt" style="margin: 0; cursor: pointer;">✨ AI Auto-Optimize</label>
+                        <label>RSS URL</label>
+                        <input type="text" x-model="rssConfig.url" placeholder="https://..." style="flex: 1;">
+                        <button class="btn-fetch" @click="fetchRssNow()" :disabled="isFetchingRss" style="height: 28px; padding: 0 12px;">
+                            <span x-text="isFetchingRss ? '⏳' : '⚡ Fetch'"></span>
+                        </button>
                     </div>
                 </div>
                 
-                <div class="config-group" x-show="rssConfig.auto_optimize" style="margin-top: 10px;">
-                    <label>AI Prompt (Optional)</label>
-                    <textarea x-model="rssConfig.ai_prompt" @change="saveRssConfig()" placeholder="Custom AI instructions..." style="width: 100%; height: 50px; font-size: 10px; padding: 4px; border-radius: 4px; background: #222; border: 1px solid var(--border); color: white;"></textarea>
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Mode</label>
+                        <div class="segmented-control">
+                            <button class="segment-btn" :class="{ active: rssConfig.bit_depth === 1 }" @click="rssConfig.bit_depth = 1; saveRssConfig()">1bit</button>
+                            <button class="segment-btn" :class="{ active: rssConfig.bit_depth === 2 }" @click="rssConfig.bit_depth = 2; saveRssConfig()">2bit</button>
+                        </div>
+                    </div>
+                    <div class="config-group">
+                        <input type="checkbox" id="rssAutoOpt" x-model="rssConfig.auto_optimize" @change="saveRssConfig()">
+                        <label for="rssAutoOpt" style="cursor: pointer; min-width: auto;">✨ AI Optimize</label>
+                    </div>
                 </div>
+
+                <div x-show="rssConfig.auto_optimize" class="config-group">
+                    <textarea x-model="rssConfig.ai_prompt" @change="saveRssConfig()" placeholder="Custom AI instructions..." style="width: 100%; height: 40px; font-size: 10px; margin-top: 5px;"></textarea>
+                </div>
+                
+                <div class="stats" x-html="rssStatus" style="border-top: 1px solid var(--border); padding-top: 5px; margin-top: 5px;">Ready</div>
             </div>
 
             <div class="reddit-preview-list">
@@ -375,109 +361,51 @@
             </div>
         </div>
 
-        <!-- Reddit Dish Panel -->
+        <!-- Reddit Source Panel -->
         <div x-show="currentTab === 'reddit'" class="tab-content">
-            <div class="config-container" style="max-width: 600px;">
-                <div class="size-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+            <div class="config-container">
+                <div class="config-row">
                     <div class="config-group">
                         <label>Subreddit</label>
-                        <select x-model="redditConfig.subreddit" @change="handleRedditSubChange()" style="max-width: 140px;">
-                            <option value="">-- Choose --</option>
-                            <optgroup label="Memes">
-                                <option value="memes">r/memes</option>
-                                <option value="dankmemes">r/dankmemes</option>
-                                <option value="AdviceAnimals">r/AdviceAnimals</option>
-                                <option value="wholesomememes">r/wholesomememes</option>
-                                <option value="PrequelMemes">r/PrequelMemes</option>
-                                <option value="HistoryMemes">r/HistoryMemes</option>
-                                <option value="trippinthroughtime">r/trippinthroughtime</option>
-                                <option value="me_irl">r/me_irl</option>
-                                <option value="Antimeme">r/Antimeme</option>
-                                <option value="StarterPacks">r/StarterPacks</option>
-                            </optgroup>
-                            <optgroup label="Photos/Art">
-                                <option value="EarthPorn">r/EarthPorn</option>
-                                <option value="Art">r/Art</option>
-                                <option value="OldSchoolCool">r/OldSchoolCool</option>
-                                <option value="MildlyInteresting">r/MildlyInteresting</option>
-                                <option value="AccidentalRenaissance">r/AccidentalRenaissance</option>
-                                <option value="StreetPhotography">r/StreetPhotography</option>
-                                <option value="DataIsBeautiful">r/DataIsBeautiful</option>
-                                <option value="WhatIsThisThing">r/WhatIsThisThing</option>
-                                <option value="FoodPorn">r/FoodPorn</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="config-group">
-                        <label class="compact-label">AI Auto</label>
-                        <input type="checkbox" x-model="redditConfig.auto_optimize">
-                    </div>
-                </div>
-
-                <div class="reddit-status-row">
-                    <div id="redditStatus" x-html="redditStatus">Ready</div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-sm btn-outline" @click="clearRedditCache()" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">🗑️ Clear Cache</button>
-                        <template x-if="redditConfig.auto_optimize">
-                            <div style="color: #6366f1; font-size: 11px; align-self: center;">✨ AI Auto Enabled</div>
-                        </template>
-                    </div>
-                </div>
-
-                <div class="config-row">
-                    <div class="config-group">
-                        <label>Bit Depth</label>
-                        <div class="segmented-control">
-                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 1 }" @click="setRedditBitDepth(1)">1bit (BW)</button>
-                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 2 }" @click="setRedditBitDepth(2)">2bit (4G)</button>
-                        </div>
-                    </div>
-                    <div class="config-group" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
-                        <label>Gamma</label>
-                        <input type="range" x-model="redditConfig.gamma_index" min="0" max="7" step="1">
-                        <span class="val" x-text="gammaLabels && redditConfig && gammaLabels[redditConfig.gamma_index] !== undefined ? gammaLabels[redditConfig.gamma_index].toFixed(1) : '1.0'">1.0</span>
-                    </div>
-                </div>
-
-                <div class="config-row">
-                    <div class="config-group" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
-                        <label>Sharpen</label>
-                        <input type="range" x-model="redditConfig.sharpen_amount" min="0" max="2.0" step="0.1">
-                        <span class="val" x-text="parseFloat(redditConfig.sharpen_amount || 0).toFixed(1)">0.0</span>
-                    </div>
-                    <div class="config-group" :style="redditConfig.auto_optimize ? 'opacity: 0.4; pointer-events: none;' : ''">
-                        <label>Dither %</label>
-                        <input type="range" x-model="redditConfig.dither_strength" min="0" max="1" step="0.01" @input="redditConfig.dither_strength = parseFloat($event.target.value)">
-                        <span class="val" x-text="Math.round((redditConfig.dither_strength || 0) * 100)">100</span>
-                    </div>
-                </div>
-
-                <div class="config-row">
-                    <div class="config-group">
-                        <label>Clip %</label>
-                        <input type="range" x-model="redditConfig.clip_percent" min="0" max="60">
-                        <span class="val" x-text="redditConfig.clip_percent">22</span>
-                    </div>
-                    <div class="config-group">
-                        <label>Cost %</label>
-                        <input type="range" x-model="redditConfig.cost_percent" min="0" max="60">
-                        <span class="val" x-text="redditConfig.cost_percent">6</span>
-                    </div>
-                </div>
-
-                <div class="config-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
-                    <label style="color: var(--text-dim); font-size: 11px; font-weight: 500;">AI Prompt</label>
-                    <textarea x-model="redditConfig.ai_prompt" placeholder="Custom AI instructions for categorization and strategy..." style="width: 100%; height: 60px; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font-size: 11px; font-family: sans-serif; resize: vertical;"></textarea>
-                </div>
-
-                <div class="config-row">
-                    <div class="config-actions" style="flex: 1; justify-content: flex-end; display: flex; gap: 8px;">
-                        <button class="btn-save" @click="saveRedditConfig()" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">Save Config</button>
-                        <button class="btn-fetch" @click="fetchRedditNow()" :disabled="isFetchingReddit" style="height: 28px; font-size: 11px; margin: 0; padding: 0 10px;">
-                            <span x-text="isFetchingReddit ? '⏳ Saving & Fetching...' : '⚡ Save Config and Fetch Now'"></span>
+                        <input type="text" x-model="redditConfig.subreddit" placeholder="e.g. aww" style="flex: 1;">
+                        <button class="btn-fetch" @click="fetchRedditNow()" :disabled="isFetchingReddit" style="height: 28px; padding: 0 12px;">
+                            <span x-text="isFetchingReddit ? '⏳' : '⚡ Fetch'"></span>
                         </button>
                     </div>
                 </div>
+
+                <div class="config-row">
+                    <div class="config-group">
+                        <label>Mode</label>
+                        <div class="segmented-control">
+                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 1 }" @click="redditConfig.bit_depth = 1; saveRedditConfig()">1bit</button>
+                            <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 2 }" @click="redditConfig.bit_depth = 2; saveRedditConfig()">2bit</button>
+                        </div>
+                    </div>
+                    <div class="config-group">
+                        <input type="checkbox" id="redditAutoOpt" x-model="redditConfig.auto_optimize" @change="saveRedditConfig()">
+                        <label for="redditAutoOpt" style="cursor: pointer; min-width: auto;">✨ AI Optimize</label>
+                    </div>
+                </div>
+
+                <div x-show="!redditConfig.auto_optimize" class="config-row" style="opacity: 0.8; border-top: 1px solid var(--border); padding-top: 8px;">
+                    <div class="config-group">
+                        <label>Gamma</label>
+                        <input type="range" x-model="redditConfig.gamma_index" min="0" max="7" @change="saveRedditConfig()">
+                        <span class="val" x-text="gammaLabels[redditConfig.gamma_index].toFixed(1)"></span>
+                    </div>
+                    <div class="config-group">
+                        <label>Sharp</label>
+                        <input type="range" x-model="redditConfig.sharpen_amount" min="0" max="1" step="0.1" @change="saveRedditConfig()">
+                        <span class="val" x-text="redditConfig.sharpen_amount"></span>
+                    </div>
+                </div>
+
+                <div x-show="redditConfig.auto_optimize" class="config-group">
+                    <textarea x-model="redditConfig.ai_prompt" @change="saveRedditConfig()" placeholder="Custom AI instructions..." style="width: 100%; height: 40px; font-size: 10px; margin-top: 5px;"></textarea>
+                </div>
+
+                <div class="stats" x-html="redditStatus" style="border-top: 1px solid var(--border); padding-top: 5px; margin-top: 5px;">Ready</div>
             </div>
 
             <div class="reddit-preview-list">
