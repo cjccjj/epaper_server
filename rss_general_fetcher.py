@@ -127,8 +127,19 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
     height = device.display_height or 300
     auto_optimize = config.get("auto_optimize", False)
     ai_prompt = config.get("ai_prompt")
+    
+    # Manual settings overrides if auto_optimize is False
+    gamma_labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+    gamma_index = int(config.get("gamma_index", 0 if bit_depth == 1 else 6))
+    if gamma_index < 0 or gamma_index >= len(gamma_labels):
+        gamma_index = 0
+    manual_gamma = gamma_labels[gamma_index]
+    
+    dither_strength = float(config.get("dither_strength", 1.0))
+    sharpen_amount = float(config.get("sharpen_amount", 0.0))
 
     print(f"\n[RSS FETCH] Starting for {mac} URL: {rss_url}")
+    print(f"  Options: auto_opt={auto_optimize}, gamma={manual_gamma}, dither={dither_strength}")
     
     cache = load_cache_func(mac)
     cache["status"] = "fetching"
@@ -174,7 +185,9 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
         save_cache_func(mac, cache)
 
         try:
-            print(f"      AI Analysis for: {item['title'][:50]}...")
+            print(f"      Processing item: {item['title'][:50]}...")
+            
+            # Step 1: AI Analysis (always done for technical strategy, but used differently if auto_optimize is False)
             ai_analysis, img_ori = await ai_optimizer.get_ai_analysis(
                 img_url, 
                 item["post_url"], 
@@ -183,13 +196,46 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
                 ai_prompt=ai_prompt
             )
 
+            # Debug AI summary for preview
+            ai_parts = [
+                f"Sty:{ai_analysis.get('image_style', '?')}",
+                f"Dec:{ai_analysis.get('decision', '?')}",
+                f"Res:{ai_analysis.get('resize_strategy', '?')}",
+                f"Gam:{ai_analysis.get('gamma', 0.0):.1f}"
+            ]
+            ai_summary = "AI: " + " | ".join(ai_parts)
+
             # Technical strategy
             img_size = ai_analysis.get("_img_size")
             strategy = ai_optimizer.get_process_strategy(ai_analysis, img_size=img_size, target_res=(width, height))
             
             if strategy.get("decision") == "skip":
-                all_processed.append({**item, "filename": None, "status": "skip", "reason": strategy.get("reason")})
+                all_processed.append({
+                    **item, 
+                    "filename": None, 
+                    "status": "skip", 
+                    "reason": strategy.get("reason"),
+                    "debug_ai": ai_summary
+                })
                 continue
+
+            # Apply manual overrides if auto_optimize is False (Default behavior)
+            if not auto_optimize:
+                print(f"      Strategy: Using MANUAL settings (auto_optimize is False).")
+                strategy["gamma"] = manual_gamma
+                strategy["sharpen"] = sharpen_amount
+                strategy["dither_strength"] = dither_strength
+            else:
+                print(f"      Strategy: Using AI settings (auto_optimize is True).")
+
+            # Final debug code summary
+            code_parts = [
+                f"Method:{strategy.get('resize_method', '?')}",
+                f"Gamma:{strategy.get('gamma', 1.0):.1f}",
+                f"Sharp:{strategy.get('sharpen', 0.0):.1f}",
+                f"Dither:{int(strategy.get('dither_strength', 0.0)*100)}%"
+            ]
+            code_summary = "CODE: " + " | ".join(code_parts)
 
             # Process image
             final_show_title = strategy.get("include_title", False) if auto_optimize else False
@@ -220,7 +266,10 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
             all_processed.append({
                 **item,
                 "filename": filename,
-                "status": "ok"
+                "status": "ok",
+                "img_url": img_url, # Ensure original URL is preserved for preview
+                "debug_ai": ai_summary,
+                "debug_code": code_summary
             })
             filename_counter += 1
 
