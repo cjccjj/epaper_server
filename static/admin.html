@@ -269,42 +269,25 @@
 
             <div class="reddit-preview-list">
                 <template x-for="item in rssPreview" :key="item.post_url">
-                    <div class="reddit-post" style="height: auto; min-height: 200px; width: 420px; display: flex; flex-direction: row; flex-wrap: wrap;">
-                        <!-- Comparison View -->
-                        <div style="display: flex; width: 100%; border-bottom: 1px solid var(--border);">
-                            <!-- Original Image -->
-                            <div style="flex: 1; position: relative; height: 150px; background: #000; border-right: 1px solid var(--border);">
-                                <template x-if="item.img_url">
-                                    <img :src="item.img_url" style="width: 100%; height: 150px; object-fit: contain;">
-                                </template>
-                                <template x-if="!item.img_url">
-                                    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666; font-size: 10px;">No Original</div>
-                                </template>
-                                <div style="position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.6); color: white; font-size: 8px; padding: 2px 4px; border-radius: 3px;">ORIGINAL</div>
-                            </div>
-                            
-                            <!-- Processed Image -->
-                            <div style="flex: 1; position: relative; height: 150px; background: #000;">
-                                <template x-if="item.filename">
-                                    <img :src="'/api/bitmap/' + item.filename" style="width: 100%; height: 150px; object-fit: contain;">
-                                    <div style="position: absolute; top: 4px; right: 4px; background: rgba(16, 185, 129, 0.9); color: white; font-size: 8px; padding: 2px 4px; border-radius: 3px; font-weight: bold;">DITHERED</div>
-                                </template>
-                                <template x-if="!item.filename">
-                                    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666; font-size: 10px;" x-text="item.status === 'skip' ? 'Skipped: ' + item.reason : 'No Processed'"></div>
-                                </template>
-                                <div style="position: absolute; top: 4px; left: 4px; background: rgba(59, 130, 246, 0.6); color: white; font-size: 8px; padding: 2px 4px; border-radius: 3px;">PROCESSED</div>
-                            </div>
-                        </div>
+                    <div class="reddit-post" :class="{ 'skipped': item.status === 'skip', 'error': item.status === 'error' }" @click="showOverlay(item.filename ? '/api/bitmap/' + item.filename : item.img_url)">
+                        <!-- Original Image (Always Shown) -->
+                        <img :src="item.img_url" style="height: 120px; object-fit: contain; background: #222; border-bottom: 1px solid var(--border);">
+                        
+                        <!-- Processed Image (Only if not skipped) -->
+                        <template x-if="item.filename">
+                            <img :src="'/api/bitmap/' + item.filename" style="height: 150px; object-fit: cover; background: #000;">
+                        </template>
 
-                        <!-- Content -->
-                        <div style="width: 100%; padding: 6px;">
-                            <div class="post-title" x-text="item.title" :title="item.title"></div>
-                            <a class="post-url" :href="item.post_url" target="_blank" x-text="item.post_url"></a>
-                        </div>
+                        <div class="post-title" x-text="item.title"></div>
+                        <a :href="item.post_url" target="_blank" class="post-url" @click.stop x-text="item.post_url"></a>
                         
                         <!-- Debug Info -->
-                        <div x-show="item.debug_ai" class="ai-debug" style="width: 100%;" x-text="item.debug_ai"></div>
-                        <div x-show="item.debug_code" class="process-debug" style="width: 100%;" x-text="item.debug_code"></div>
+                        <div class="ai-debug">
+                            <div x-text="item.debug_ai || 'No AI info'"></div>
+                        </div>
+                        <div class="process-debug">
+                            <div x-text="item.debug_code || 'No code info'"></div>
+                        </div>
                     </div>
                 </template>
             </div>
