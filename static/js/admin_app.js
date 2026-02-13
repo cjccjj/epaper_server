@@ -7,7 +7,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('adminApp', () => ({
         // --- State ---
         devices: [],
-        currentMac: localStorage.getItem('lastSelectedMac') || '',
+        currentMac: '', // Initialize empty, will restore in init
         activeDish: 'gallery',
         currentTab: localStorage.getItem('lastSelectedTab') || 'gallery',
         baseUrl: '',
@@ -82,10 +82,15 @@ document.addEventListener('alpine:init', () => {
             await this.fetchDevices();
             await this.fetchConfig();
             
-            // Restore last state
+            // Restore last state with a slight delay to ensure x-for template is rendered
             const lastMac = localStorage.getItem('lastSelectedMac');
-            if (lastMac && this.devices.some(d => d.mac_address === lastMac)) {
-                await this.selectDevice(lastMac);
+            if (lastMac) {
+                // Wait for Alpine to render the options from fetchDevices
+                this.$nextTick(async () => {
+                    if (this.devices.some(d => d.mac_address === lastMac)) {
+                        await this.selectDevice(lastMac);
+                    }
+                });
             }
             
             this.showTab(this.currentTab);
