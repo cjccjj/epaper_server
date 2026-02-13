@@ -27,8 +27,14 @@ async def fetch_general_rss(url: str) -> List[Dict]:
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         try:
             response = await client.get(url, headers=headers)
+            print(f"DEBUG RSS: Fetching {url}")
+            print(f"DEBUG RSS: Status: {response.status_code}")
+            print(f"DEBUG RSS: Content-Type: {response.headers.get('content-type')}")
+            
             response.raise_for_status()
             xml_data = response.text
+            
+            print(f"DEBUG RSS: Raw data snippet (500 chars): {xml_data[:500]}...")
         except Exception as e:
             print(f"Error fetching RSS from {url}: {e}")
             return []
