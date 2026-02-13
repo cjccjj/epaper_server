@@ -16,13 +16,21 @@ async def fetch_general_rss(url: str) -> List[Dict]:
     Fetches a general RSS feed and attempts to extract 5 elements:
     title, img_url, body_text, post_url, date.
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    # Use headers that explicitly request RSS/XML content and avoid browser-like HTML responses
+    headers = {
+        "User-Agent": "epaper-server/1.0 (RSS Reader; +https://github.com/cjccjj/epaper_server)",
+        "Accept": "application/rss+xml, application/xml, application/atom+xml, text/xml;q=0.9, */*;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+    }
+    
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         try:
-            response = await client.get(url)
+            response = await client.get(url, headers=headers)
             response.raise_for_status()
             xml_data = response.text
         except Exception as e:
-            print(f"Error fetching RSS: {e}")
+            print(f"Error fetching RSS from {url}: {e}")
             return []
 
     feed = feedparser.parse(xml_data)
