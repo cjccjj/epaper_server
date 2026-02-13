@@ -83,8 +83,9 @@ document.addEventListener('alpine:init', () => {
             await this.fetchConfig();
             
             // Restore last state
-            if (this.currentMac) {
-                await this.selectDevice(this.currentMac);
+            const lastMac = localStorage.getItem('lastSelectedMac');
+            if (lastMac && this.devices.some(d => d.mac_address === lastMac)) {
+                await this.selectDevice(lastMac);
             }
             
             this.showTab(this.currentTab);

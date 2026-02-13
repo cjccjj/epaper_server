@@ -130,13 +130,14 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
     
     # Manual settings overrides if auto_optimize is False
     gamma_labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
-    gamma_index = int(config.get("gamma_index", 0 if bit_depth == 1 else 6))
+    # Default to gamma 1.2 (index 1) when auto_optimize is False
+    gamma_index = int(config.get("gamma_index", 1)) 
     if gamma_index < 0 or gamma_index >= len(gamma_labels):
-        gamma_index = 0
+        gamma_index = 1
     manual_gamma = gamma_labels[gamma_index]
     
     dither_strength = float(config.get("dither_strength", 1.0))
-    sharpen_amount = float(config.get("sharpen_amount", 0.0))
+    sharpen_amount = float(config.get("sharpen_amount", 0.2)) # Default sharpen to 0.2
 
     print(f"\n[RSS FETCH] Starting for {mac} URL: {rss_url}")
     print(f"  Options: auto_opt={auto_optimize}, gamma={manual_gamma}, dither={dither_strength}")
@@ -225,20 +226,23 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
                 strategy["gamma"] = manual_gamma
                 strategy["sharpen"] = sharpen_amount
                 strategy["dither_strength"] = dither_strength
+                strategy["resize_method"] = "crop" # Default to crop for manual RSS
+                strategy["include_title"] = True   # Default to show title for manual RSS
             else:
                 print(f"      Strategy: Using AI settings (auto_optimize is True).")
 
             # Final debug code summary
             code_parts = [
-                f"Method:{strategy.get('resize_method', '?')}",
-                f"Gamma:{strategy.get('gamma', 1.0):.1f}",
+                f"Meth:{strategy.get('resize_method', '?')}",
+                f"Gam:{strategy.get('gamma', 1.0):.1f}",
                 f"Sharp:{strategy.get('sharpen', 0.0):.1f}",
-                f"Dither:{int(strategy.get('dither_strength', 0.0)*100)}%"
+                f"Dith:{int(strategy.get('dither_strength', 0.0)*100)}%",
+                f"Ttl:{'Y' if strategy.get('include_title') else 'N'}"
             ]
             code_summary = "CODE: " + " | ".join(code_parts)
 
             # Process image
-            final_show_title = strategy.get("include_title", False) if auto_optimize else False
+            final_show_title = strategy.get("include_title", False)
             
             processed_img = await asyncio.to_thread(
                 image_processor.process_image_pipeline,
