@@ -129,6 +129,9 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
     ai_prompt = config.get("ai_prompt")
     
     # Manual settings overrides if auto_optimize is False
+    clip_pct = int(config.get("clip_percent", 22 if bit_depth == 1 else 20))
+    cost_pct = int(config.get("cost_percent", 6))
+    
     gamma_labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
     # Default to gamma 1.2 (index 1) when auto_optimize is False
     gamma_index = int(config.get("gamma_index", 1)) 
@@ -254,7 +257,10 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
                 sharpen=strategy.get("sharpen", 0.0),
                 dither_strength=strategy.get("dither_strength", 1.0),
                 title=item["title"] if final_show_title else None,
-                bit_depth=bit_depth
+                bit_depth=bit_depth,
+                clip_pct=clip_pct,
+                cost_pct=cost_pct,
+                font_size=image_processor.OVERLAY_FONT_SIZE
             )
             
             # Generate structured filename
