@@ -41,6 +41,7 @@ class Device(Base):
     enabled_dishes = Column(JSON, default=lambda: ["gallery"])
     display_mode = Column(String, default="sequence") # "sequence" or "random"
     last_dish_index = Column(Integer, default=0)
+    last_served_image = Column(String, nullable=True)
     reddit_config = Column(JSON, default=lambda: {"subreddit": "aww", "sort": "top", "time": "day"})
     rss_config = Column(JSON, default=lambda: {"url": "", "bit_depth": 2, "auto_optimize": False})
     
@@ -107,6 +108,11 @@ def run_migrations():
             print("Migration: Adding 'rss_config' column to 'devices' table")
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN rss_config JSON DEFAULT '{}'"))
+                conn.commit()
+        if "last_served_image" not in columns:
+            print("Migration: Adding 'last_served_image' column to 'devices' table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN last_served_image TEXT"))
                 conn.commit()
 
 def init_db():

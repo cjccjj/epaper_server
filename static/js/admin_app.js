@@ -46,6 +46,7 @@ document.addEventListener('alpine:init', () => {
             sharpen_amount: 0.2,
             dither_strength: 1.0,
             auto_optimize: true,
+            show_title: true,
             ai_prompt: ''
         },
         redditPreview: [],
@@ -57,6 +58,10 @@ document.addEventListener('alpine:init', () => {
             url: '',
             bit_depth: 2,
             auto_optimize: false,
+            show_title: true,
+            gamma_index: 0,
+            sharpen_amount: 0.1,
+            dither_strength: 1.0,
             ai_prompt: ''
         },
         rssPreview: [],
@@ -143,7 +148,8 @@ document.addEventListener('alpine:init', () => {
                 display_height: device.display_height,
                 timezone: device.timezone,
                 enabled_dishes: device.enabled_dishes || ['gallery'],
-                display_mode: device.display_mode || 'sequence'
+                display_mode: device.display_mode || 'sequence',
+                current_image: device.current_image
             };
             this.activeDish = device.active_dish || 'gallery';
             
@@ -486,22 +492,6 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async clearRedditCache() {
-            if (!this.currentMac) return;
-            if (!confirm("Are you sure you want to clear the Reddit cache and delete all processed images?")) return;
-            
-            try {
-                const res = await fetch(`/admin/reddit/cache/${this.currentMac}`, { method: 'DELETE' });
-                if (res.ok) {
-                    this.redditPreview = [];
-                    this.redditStatus = '<span style="color: #10b981;">🗑️ Cache Cleared</span>';
-                    setTimeout(() => { this.redditStatus = 'Ready'; }, 3000);
-                }
-            } catch (e) {
-                console.error("Clear reddit cache error:", e);
-            }
-        },
-
         // --- Rss Management ---
         async loadRssConfig() {
             if (!this.currentMac) return;
@@ -586,22 +576,6 @@ document.addEventListener('alpine:init', () => {
                 console.error("Fetch RSS error:", e);
                 this.rssStatus = `<span style="color: #ef4444;">❌ Error: ${e}</span>`;
                 this.isFetchingRss = false;
-            }
-        },
-
-        async clearRssCache() {
-            if (!this.currentMac) return;
-            if (!confirm("Are you sure you want to clear the RSS cache and delete all processed images?")) return;
-            
-            try {
-                const res = await fetch(`/admin/rss/cache/${this.currentMac}`, { method: 'DELETE' });
-                if (res.ok) {
-                    this.rssPreview = [];
-                    this.rssStatus = '<span style="color: #10b981;">🗑️ Cache Cleared</span>';
-                    setTimeout(() => { this.rssStatus = 'Ready'; }, 3000);
-                }
-            } catch (e) {
-                console.error("Clear rss cache error:", e);
             }
         }
     }));

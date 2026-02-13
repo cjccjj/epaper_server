@@ -124,8 +124,18 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                     print(f"    --- Processing Post: {entry.title[:50]}... ---")
                     
                     # Process new image
-                    content = entry.get("summary", "") + entry.get("content", [{}])[0].get("value", "")
-                    img_matches = re.findall(r'<img [^>]*src="([^"]+)"', content)
+                    summary = entry.get("summary", "")
+                    content_val = entry.get("content", [{}])[0].get("value", "")
+                    full_content = summary + content_val
+                    
+                    # Extract body text (plain text version of content/summary)
+                    body_text = re.sub(r'<[^>]+>', '', summary).strip()
+                    if not body_text:
+                        body_text = re.sub(r'<[^>]+>', '', content_val).strip()
+                    if len(body_text) > 300:
+                        body_text = body_text[:297] + "..."
+
+                    img_matches = re.findall(r'<img [^>]*src="([^"]+)"', full_content)
                     img_url = None
                     
                     if img_matches:
@@ -171,6 +181,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 all_posts.append({
                                     "id": post_id,
                                     "title": entry.title,
+                                    "body": body_text,
                                     "url": entry.link,
                                     "img_url": img_url,
                                     "filename": None,
@@ -196,6 +207,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                                 all_posts.append({
                                     "id": post_id,
                                     "title": entry.title,
+                                    "body": body_text,
                                     "url": entry.link,
                                     "img_url": img_url,
                                     "filename": None,
@@ -220,10 +232,12 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             # Step 7: Final Processing
                             
                             # Determine if we should show the title
-                            # If auto_optimize is on, use AI decision. Otherwise, default to False (since we removed UI toggle)
-                            # Actually, maybe we should keep a default if not auto_optimizing? 
-                            # The user said "this will decide only by AI". 
-                            final_show_title = strategy.get("include_title", False) if auto_optimize else False
+                            # If auto_optimize is on, use AI decision. 
+                            # If auto_optimize is OFF, use the user's config value.
+                            if auto_optimize:
+                                final_show_title = strategy.get("include_title", False)
+                            else:
+                                final_show_title = config.get("show_title", True)
 
                             print(f"      Image Processing: Applying pipeline (Title: {final_show_title})...")
                             processed_img = await asyncio.to_thread(
@@ -266,6 +280,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             all_posts.append({
                                 "id": post_id,
                                 "title": entry.title,
+                                "body": body_text,
                                 "url": entry.link,
                                 "img_url": img_url,
                                 "filename": filename,
@@ -291,6 +306,7 @@ async def refresh_device_reddit_cache(mac, db, BITMAP_DIR, load_device_reddit_ca
                             all_posts.append({
                                 "id": post_id,
                                 "title": entry.title,
+                                "body": body_text,
                                 "url": entry.link,
                                 "img_url": img_url,
                                 "filename": None,

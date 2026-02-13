@@ -378,6 +378,9 @@ def get_display(
                 device.current_image_index = (idx + 1) % len(valid_posts)
 
         if filename:
+            # Store the served filename for the active badge
+            device.last_served_image = filename
+            
             # Found a valid file, we're done
             break
         else:
@@ -492,6 +495,7 @@ def list_devices(db: Session = Depends(get_db)):
             "display_mode": d.display_mode or "sequence",
             "reddit_config": config,
             "rss_config": d.rss_config or DEFAULT_RSS_CONFIG.copy(),
+            "current_image": d.last_served_image,
             "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
             "images": [{"id": i.id, "filename": i.filename, "original_name": i.original_name} for i in d.images]
         })

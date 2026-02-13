@@ -96,7 +96,7 @@ async def fetch_general_rss(url: str) -> List[Dict]:
         items.append({
             "title": title,
             "img_url": img_url,
-            "body_text": body_text,
+            "body": body_text,
             "post_url": post_url,
             "date": date,
             "status": "ok" if img_url else "no_image"
@@ -230,9 +230,11 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
                 strategy["sharpen"] = sharpen_amount
                 strategy["dither_strength"] = dither_strength
                 strategy["resize_method"] = "crop" # Default to crop for manual RSS
-                strategy["include_title"] = True   # Default to show title for manual RSS
+                strategy["include_title"] = config.get("show_title", True)
             else:
                 print(f"      Strategy: Using AI settings (auto_optimize is True).")
+                # If auto_optimize is True, we use the AI's decision on title
+                # strategy["include_title"] is already set by get_process_strategy
 
             # Final debug code summary
             code_parts = [
