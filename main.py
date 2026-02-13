@@ -325,10 +325,9 @@ def get_display(
     device.fw_version = fw_version
     device.rssi = rssi
     
-    # Use device's refresh_rate or fallback to provided header or default 60
-    current_refresh_rate = refresh_rate if refresh_rate else device.refresh_rate
-    if not current_refresh_rate:
-        current_refresh_rate = 60
+    # Prioritize the refresh_rate stored in our database (set by Admin)
+    # The header refresh_rate is what the device is CURRENTLY using
+    current_refresh_rate = device.refresh_rate or refresh_rate or 60
         
     # Logic to select content based on active dish and display mode
     enabled_dishes = device.enabled_dishes or ["gallery"]

@@ -167,13 +167,13 @@
                 <h3 x-text="deviceSettings.name || 'Device'">Device</h3>
                 <div class="refresh-rate-box">
                     <label>Refresh:</label>
-                    <input type="number" x-model="deviceSettings.refresh_rate" @change="saveDeviceSettings" min="10" style="width: 40px;">
+                    <input type="number" x-model="deviceSettings.refresh_rate" @change="saveDeviceSettings" min="10" style="width: 60px;">
                     <span>s</span>
                     
                     <label style="margin-left: 10px;">Size:</label>
-                    <input type="number" x-model="deviceSettings.display_width" @change="saveDeviceSettings" min="100" style="width: 45px;">
+                    <input type="number" x-model="deviceSettings.display_width" @change="saveDeviceSettings" min="100" style="width: 65px;">
                     <span>x</span>
-                    <input type="number" x-model="deviceSettings.display_height" @change="saveDeviceSettings" min="100" style="width: 45px;">
+                    <input type="number" x-model="deviceSettings.display_height" @change="saveDeviceSettings" min="100" style="width: 65px;">
                     
                     <label style="margin-left: 10px;">TZ:</label>
                     <select x-model="deviceSettings.timezone" @change="saveDeviceSettings" style="width: 100px;">
