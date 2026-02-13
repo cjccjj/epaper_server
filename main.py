@@ -298,7 +298,6 @@ def get_display(
     battery_voltage: Optional[float] = Header(None, alias="Battery-Voltage"),
     fw_version: Optional[str] = Header(None, alias="FW-Version"),
     rssi: Optional[int] = Header(None, alias="RSSI"),
-    refresh_rate: Optional[int] = Header(None, alias="Refresh-Rate"),
     db: Session = Depends(get_db)
 ):
     if not id:
@@ -325,9 +324,9 @@ def get_display(
     device.fw_version = fw_version
     device.rssi = rssi
     
-    # Prioritize the refresh_rate stored in our database (set by Admin)
-    # The header refresh_rate is what the device is CURRENTLY using
-    current_refresh_rate = device.refresh_rate or refresh_rate or 60
+    # The server has 100% control over the refresh rate.
+    # The device is passive and follows whatever is stored in the database.
+    current_refresh_rate = device.refresh_rate or 60
         
     # Logic to select content based on active dish and display mode
     enabled_dishes = device.enabled_dishes or ["gallery"]
