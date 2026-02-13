@@ -46,16 +46,23 @@ async def fetch_general_rss(url: str) -> List[Dict]:
         # 1. Title
         title = entry.get("title", "No Title")
 
-        # 2. Image URL (Top 3 possibilities)
+        # 2. Image URL (Multiple possibilities)
         img_url = None
         
-        # Possibility A: media_content or media_thumbnail
-        if 'media_content' in entry and entry.media_content:
-            img_url = entry.media_content[0].get('url')
-        elif 'media_thumbnail' in entry and entry.media_thumbnail:
-            img_url = entry.media_thumbnail[0].get('url')
+        # Possibility A: Custom tags common in some video feeds (thumb_large, thumb)
+        if 'thumb_large' in entry:
+            img_url = entry.thumb_large
+        elif 'thumb' in entry:
+            img_url = entry.thumb
         
-        # Possibility B: enclosure
+        # Possibility B: media_content or media_thumbnail
+        if not img_url:
+            if 'media_content' in entry and entry.media_content:
+                img_url = entry.media_content[0].get('url')
+            elif 'media_thumbnail' in entry and entry.media_thumbnail:
+                img_url = entry.media_thumbnail[0].get('url')
+        
+        # Possibility C: enclosure
         if not img_url and 'enclosures' in entry and entry.enclosures:
             for enc in entry.enclosures:
                 if enc.get('type', '').startswith('image/'):
