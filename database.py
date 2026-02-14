@@ -42,11 +42,23 @@ class Device(Base):
     display_mode = Column(String, default="sequence") # "sequence" or "random"
     last_dish_index = Column(Integer, default=0)
     last_served_image = Column(String, nullable=True)
-    reddit_config = Column(JSON, default=lambda: {"subreddit": "aww", "sort": "top", "time": "day"})
-    rss_config = Column(JSON, default=lambda: {"url": "", "bit_depth": 2, "auto_optimize": False})
     
     # Relationships
     images = relationship("DeviceImage", back_populates="device", cascade="all, delete-orphan")
+    rss_sources = relationship("RssSource", back_populates="device", cascade="all, delete-orphan")
+
+class RssSource(Base):
+    __tablename__ = "rss_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mac_address = Column(String, ForeignKey("devices.mac_address"))
+    url = Column(String)
+    name = Column(String)
+    config = Column(JSON, default=lambda: {}) # bit_depth, auto_optimize, etc.
+    last_fetch = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    device = relationship("Device", back_populates="rss_sources")
 
 class DeviceImage(Base):
     __tablename__ = "device_images"
@@ -104,16 +116,14 @@ def run_migrations():
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN last_dish_index INTEGER DEFAULT 0"))
                 conn.commit()
-        if "rss_config" not in columns:
-            print("Migration: Adding 'rss_config' column to 'devices' table")
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE devices ADD COLUMN rss_config JSON DEFAULT '{}'"))
-                conn.commit()
         if "last_served_image" not in columns:
             print("Migration: Adding 'last_served_image' column to 'devices' table")
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN last_served_image TEXT"))
                 conn.commit()
+
+    # Ensure all tables are created
+    Base.metadata.create_all(bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)

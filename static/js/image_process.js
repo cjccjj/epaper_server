@@ -224,25 +224,25 @@ const ImageProcess = {
             }
         }
 
-        // 2. Pack indices into rows with filter byte (0)
+        // 2. Pack data for PNG (Color Type 3, Indexed)
+        // Each row must start with a filter byte (0 for none)
         const bytesPerRow = Math.ceil((width * bitDepth) / 8);
         const packedData = new Uint8Array(height * (1 + bytesPerRow));
-
+        
         for (let y = 0; y < height; y++) {
-            const rowStart = y * (1 + bytesPerRow);
-            packedData[rowStart] = 0; // Filter Type 0 (None)
-
+            const rowOffset = y * (1 + bytesPerRow);
+            packedData[rowOffset] = 0; // Filter byte: None
+            
+            const rowData = new Uint8Array(bytesPerRow);
             for (let x = 0; x < width; x++) {
                 const idx = indices[y * width + x];
-                const bytePos = rowStart + 1 + Math.floor((x * bitDepth) / 8);
                 if (bitDepth === 1) {
-                    const bitPos = 7 - (x % 8);
-                    packedData[bytePos] |= (idx << bitPos);
+                    rowData[Math.floor(x / 8)] |= (idx << (7 - (x % 8)));
                 } else {
-                    const bitPos = 6 - (x % 4) * 2;
-                    packedData[bytePos] |= (idx << bitPos);
+                    rowData[Math.floor(x / 4)] |= (idx << (6 - (x % 4) * 2));
                 }
             }
+            packedData.set(rowData, rowOffset + 1);
         }
 
         // 3. Helper functions for PNG construction
@@ -260,7 +260,7 @@ const ImageProcess = {
             for (let i = 0; i < buf.length; i++) {
                 crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
             }
-            return crc ^ -1;
+            return (crc ^ -1) >>> 0;
         }
 
         function makeChunk(type, data) {

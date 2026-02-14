@@ -36,34 +36,21 @@ document.addEventListener('alpine:init', () => {
         },
         stats: '',
         
-        // Reddit State
-        redditConfig: {
-            subreddit: '',
-            bit_depth: 2,
-            gamma_index: 6,
-            clip_percent: 20,
-            cost_percent: 6,
-            sharpen_amount: 0.2,
-            dither_strength: 1.0,
-            auto_optimize: true,
-            show_title: true,
-            ai_prompt: ''
-        },
-        redditPreview: [],
-        redditStatus: 'Ready',
-        isFetchingReddit: false,
-
-        // Rss State
+        // RSS State
+        rssSources: [],
+        currentRssSourceId: null,
         rssConfig: {
-            url: '',
-            bit_depth: 2,
-            auto_optimize: false,
-            show_title: true,
-            gamma_index: 0,
-            sharpen_amount: 0.1,
-            dither_strength: 1.0,
-            ai_prompt: ''
-        },
+    url: '',
+    name: '',
+    bit_depth: 2,
+    auto_optimize: true,
+    gamma_index: 0,
+    sharpen_amount: 0.1,
+    dither_strength: 1.0,
+    clip_percent: 22,
+    cost_percent: 6,
+    ai_prompt: ''
+},
         rssPreview: [],
         rssStatus: 'Ready',
         isFetchingRss: false,
@@ -133,7 +120,6 @@ document.addEventListener('alpine:init', () => {
         },
 
         async selectDevice(mac) {
-            if (!mac) return;
             this.currentMac = mac;
             localStorage.setItem('lastSelectedMac', mac);
             
@@ -142,27 +128,39 @@ document.addEventListener('alpine:init', () => {
 
             // Update local settings from device object
             this.deviceSettings = {
-                name: device.name,
+                friendly_id: device.friendly_id,
                 refresh_rate: device.refresh_rate,
                 display_width: device.display_width,
                 display_height: device.display_height,
                 timezone: device.timezone,
                 enabled_dishes: device.enabled_dishes || ['gallery'],
                 display_mode: device.display_mode || 'sequence',
-                current_image: device.current_image
+                active_dish: device.active_dish,
+                last_served_image: device.last_served_image
             };
-            this.activeDish = device.active_dish || 'gallery';
+            this.galleryItems = device.images || [];
+            this.rssSources = device.rss_sources || [];
+            
+            // Set current RSS source for preview if none selected
+            if (!this.currentRssSourceId && this.rssSources.length > 0) {
+                this.selectRssSource(this.rssSources[0].id);
+            } else if (this.rssSources.length === 0) {
+                this.currentRssSourceId = null;
+                this.rssPreview = [];
+            }
             
             // Centralized config loading based on current state
             await this.refreshCurrentTab();
+
+            // Also update the activeDish local state to match device
+            this.activeDish = device.active_dish || 'gallery';
         },
 
         async refreshCurrentTab() {
             if (!this.currentMac) return;
             
             if (this.currentTab === 'gallery') await this.loadGallery();
-            else if (this.currentTab === 'reddit') await this.loadRedditConfig();
-            else if (this.currentTab === 'rss') await this.loadRssConfig();
+            else if (this.currentTab === 'rss') await this.loadRssPreview();
         },
 
         async showTab(tab) {
@@ -174,11 +172,7 @@ document.addEventListener('alpine:init', () => {
         async saveDeviceSettings() {
             if (!this.currentMac) return;
             try {
-                // Include both device settings and reddit config to be safe
-                const payload = { 
-                    ...this.deviceSettings,
-                    reddit_config: this.redditConfig 
-                };
+                const payload = { ...this.deviceSettings };
                 await fetch(`/admin/device/${this.currentMac}/settings`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -187,6 +181,59 @@ document.addEventListener('alpine:init', () => {
                 await this.fetchDevices(); // Refresh list
             } catch (e) {
                 console.error("Failed to save settings:", e);
+            }
+        },
+
+        selectRssSource(id) {
+            this.currentRssSourceId = id;
+            const s = this.rssSources.find(src => src.id === id);
+            if (s) {
+                this.rssConfig = { ...this.rssConfig, ...s.config, url: s.url, name: s.name };
+                this.loadRssPreview();
+            }
+        },
+
+        async addRssSource() {
+            if (!this.rssConfig.url) return alert("Please enter an RSS URL.");
+            try {
+                const res = await fetch(`/admin/rss/add/${this.currentMac}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: this.rssConfig.url,
+                        name: this.rssConfig.name,
+                        config: { ...this.rssConfig }
+                    })
+                });
+                const d = await res.json();
+                if (res.ok) {
+                    await this.fetchDevices();
+                    this.selectRssSource(d.source_id);
+                    
+                    // Auto-enable if not in enabled_dishes
+                    const dishKey = `rss_${d.source_id}`;
+                    if (!this.deviceSettings.enabled_dishes.includes(dishKey)) {
+                        this.deviceSettings.enabled_dishes.push(dishKey);
+                        await this.saveDeviceSettings();
+                    }
+                } else {
+                    alert(d.detail || "Failed to add RSS source.");
+                }
+            } catch (e) {
+                console.error("Add RSS error:", e);
+            }
+        },
+
+        async deleteRssSource(id) {
+            if (!confirm("Are you sure you want to delete this RSS source?")) return;
+            try {
+                const res = await fetch(`/admin/rss/delete/${this.currentMac}/${id}`, { method: 'POST' });
+                if (res.ok) {
+                    if (this.currentRssSourceId === id) this.currentRssSourceId = null;
+                    await this.fetchDevices();
+                }
+            } catch (e) {
+                console.error("Delete RSS error:", e);
             }
         },
 
@@ -207,18 +254,28 @@ document.addEventListener('alpine:init', () => {
                 this.deviceSettings.enabled_dishes = ['gallery'];
             }
             
-            const index = this.deviceSettings.enabled_dishes.indexOf(dish);
-            if (index > -1) {
-                // Remove if already present, but keep at least one
+            const isEnabled = this.deviceSettings.enabled_dishes.includes(dish);
+            const isActive = this.deviceSettings.active_dish === dish;
+
+            if (!isEnabled) {
+                // 1. Not enabled -> enable it
+                this.deviceSettings.enabled_dishes.push(dish);
+            } else if (!isActive) {
+                // 2. Enabled but not active -> make it active
+                this.deviceSettings.active_dish = dish;
+            } else {
+                // 3. Enabled and active -> disable it (unless it's the only one)
                 if (this.deviceSettings.enabled_dishes.length > 1) {
+                    const index = this.deviceSettings.enabled_dishes.indexOf(dish);
                     this.deviceSettings.enabled_dishes.splice(index, 1);
+                    // If we just disabled the active dish, pick another one to be active
+                    if (this.deviceSettings.active_dish === dish) {
+                        this.deviceSettings.active_dish = this.deviceSettings.enabled_dishes[0];
+                    }
                 } else {
                     alert("At least one source must be enabled.");
                     return;
                 }
-            } else {
-                // Add if not present
-                this.deviceSettings.enabled_dishes.push(dish);
             }
             
             await this.saveDeviceSettings();
@@ -377,11 +434,6 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async setAsActive(filename) {
-            // Backend currently cycles through images, so "set active" is not explicitly supported
-            // via a dedicated endpoint. We could implement current_image_index update if needed.
-            console.log("Set as active currently not supported by backend cycling logic.");
-        },
 
         showOverlay(url) {
             const overlay = document.getElementById('overlay');
@@ -390,168 +442,44 @@ document.addEventListener('alpine:init', () => {
             overlay.style.display = 'flex';
         },
 
-        // --- Reddit Management ---
-        async loadRedditConfig() {
-            if (!this.currentMac) return;
-            const device = this.devices.find(d => d.mac_address === this.currentMac);
-            if (device && device.reddit_config) {
-                this.redditConfig = device.reddit_config;
-            }
-            await this.loadRedditPreview();
-        },
-
-        async saveRedditConfig(showSuccess = true, refreshPreview = true) {
-            if (!this.currentMac) return;
-            try {
-                const res = await fetch(`/admin/device/${this.currentMac}/settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ reddit_config: this.redditConfig })
-                });
-                if (res.ok) {
-                    if (showSuccess) {
-                        this.redditStatus = '<span style="color: #10b981;">✅ Config Saved</span>';
-                        setTimeout(() => { this.redditStatus = 'Ready'; }, 3000);
-                    }
-                    await this.fetchDevices(); // Refresh global state
-                    if (refreshPreview) await this.loadRedditPreview();
-                }
-            } catch (e) {
-                console.error("Save reddit config error:", e);
-            }
-        },
-
-        async loadRedditPreview() {
-            if (!this.currentMac) return;
-            try {
-                const res = await fetch(`/admin/reddit/preview/${this.currentMac}`);
-                const data = await res.json();
-                this.redditPreview = data.posts || [];
-            } catch (e) {
-                console.error("Load reddit preview error:", e);
-            }
-        },
-
-        async fetchRedditNow() {
-            this.isFetchingReddit = true;
-            this.redditStatus = '⏳ Saving & Fetching...';
-            
-            try {
-                await this.saveRedditConfig(false, false);
-                
-                const res = await fetch(`/admin/reddit/fetch_now/${this.currentMac}`, { method: 'POST' });
-                if (res.ok) {
-                    this.redditStatus = '<span style="color: #fbbf24;">⏳ Fetch triggered...</span>';
-                    
-                    const poll = setInterval(async () => {
-                        const r = await fetch(`/admin/reddit/preview/${this.currentMac}`);
-                        const d = await r.json();
-                        
-                        // Update the preview list immediately with whatever is available in the cache
-                        if (d.posts && Array.isArray(d.posts)) {
-                            this.redditPreview = d.posts;
-                        }
-
-                        if (d.status === 'fetching') {
-                            this.redditStatus = `<span style="color: #fbbf24;">⏳ Fetching: ${d.progress || 'Processing...'}</span>`;
-                        } else {
-                            clearInterval(poll);
-                            this.isFetchingReddit = false;
-                            this.redditStatus = '<span style="color: #10b981;">✅ Fetch Complete!</span>';
-                            // Final load to ensure everything is synced
-                            await this.loadRedditPreview();
-                            setTimeout(() => { this.redditStatus = 'Ready'; }, 5000);
-                        }
-                    }, 2000);
-                } else {
-                    this.redditStatus = '<span style="color: #ef4444;">❌ Failed to trigger fetch.</span>';
-                    this.isFetchingReddit = false;
-                }
-            } catch (e) {
-                this.redditStatus = `<span style="color: #ef4444;">❌ Error: ${e}</span>`;
-                this.isFetchingReddit = false;
-            }
-        },
-
-        handleRedditSubChange() {
-            const memes = ['memes', 'dankmemes', 'AdviceAnimals', 'wholesomememes', 'PrequelMemes', 'HistoryMemes', 'trippinthroughtime', 'me_irl', 'Antimeme', 'StarterPacks'];
-            this.redditConfig.show_title = !memes.includes(this.redditConfig.subreddit);
-        },
-
-        setRedditBitDepth(depth) {
-            this.redditConfig.bit_depth = parseInt(depth);
-            // Presets for other values, but only if AI Auto is OFF
-            if (!this.redditConfig.auto_optimize) {
-                if (this.redditConfig.bit_depth === 2) {
-                    this.redditConfig.gamma_index = 6; // 2.2
-                    this.redditConfig.sharpen_amount = 0.2;
-                } else {
-                    this.redditConfig.gamma_index = 0; // 1.0
-                    this.redditConfig.sharpen_amount = 0;
-                }
-            }
-        },
-
-        // --- Rss Management ---
-        async loadRssConfig() {
-            if (!this.currentMac) return;
-            const device = this.devices.find(d => d.mac_address === this.currentMac);
-            if (device && device.rss_config) {
-                this.rssConfig = device.rss_config;
-            }
-            await this.loadRssPreview();
-        },
+        // --- RSS Management ---
 
         async loadRssPreview() {
-            if (!this.currentMac) return;
+            if (!this.currentMac || !this.currentRssSourceId) {
+                this.rssPreview = [];
+                return;
+            }
             try {
-                const res = await fetch(`/admin/rss/preview/${this.currentMac}`);
+                const res = await fetch(`/admin/rss/preview/${this.currentMac}/${this.currentRssSourceId}`);
                 const data = await res.json();
                 this.rssPreview = data.posts || [];
             } catch (e) {
-                console.error("Load rss preview error:", e);
+                console.error("Load RSS preview error:", e);
             }
         },
 
-        async saveRssConfig(showSuccess = true, refreshPreview = true) {
-            if (!this.currentMac) return;
-            try {
-                const res = await fetch(`/admin/device/${this.currentMac}/settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ rss_config: this.rssConfig })
-                });
-                if (res.ok) {
-                    if (showSuccess) {
-                        this.rssStatus = '<span style="color: #10b981;">✅ Config Saved</span>';
-                        setTimeout(() => { this.rssStatus = 'Ready'; }, 3000);
-                    }
-                    await this.fetchDevices();
-                    if (refreshPreview) await this.loadRssPreview();
-                }
-            } catch (e) {
-                console.error("Save rss config error:", e);
-            }
+        async saveRssConfig() {
+            await this.addRssSource();
         },
 
         async fetchRssNow() {
-            if (!this.rssConfig.url) {
-                alert("Please enter an RSS URL first.");
+            if (!this.currentRssSourceId) {
+                alert("Please select or add an RSS source first.");
                 return;
             }
             this.isFetchingRss = true;
             this.rssStatus = '⏳ Saving & Fetching...';
             
             try {
-                // First save the config
-                await this.saveRssConfig(false, false);
+                // First save the config (updates name/url/config)
+                await this.saveRssConfig();
 
-                const res = await fetch(`/admin/rss/fetch_now/${this.currentMac}`, { method: 'POST' });
+                const res = await fetch(`/admin/rss/fetch_now/${this.currentMac}/${this.currentRssSourceId}`, { method: 'POST' });
                 if (res.ok) {
                     this.rssStatus = '<span style="color: #fbbf24;">⏳ Fetch triggered...</span>';
                     
                     const poll = setInterval(async () => {
-                        const r = await fetch(`/admin/rss/preview/${this.currentMac}`);
+                        const r = await fetch(`/admin/rss/preview/${this.currentMac}/${this.currentRssSourceId}`);
                         const d = await r.json();
                         
                         if (d.posts && Array.isArray(d.posts)) {

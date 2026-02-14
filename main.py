@@ -13,12 +13,13 @@ import json
 import asyncio
 import image_processor
 import ai_optimizer
-import rss_fetcher
 import rss_general_fetcher
 import random
 import io
+import re
 from PIL import Image
 from typing import Optional, List
+from urllib.parse import urlparse
 
 # Configuration
 BITMAP_DIR = "bitmaps"
@@ -27,68 +28,23 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "z0000l")
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 SESSION_COOKIE_NAME = "admin_session"
 SESSION_EXPIRY_HOURS = 24
-REDDIT_CACHE_FILE = os.path.join(DATA_DIR, "reddit_cache.json")
 os.makedirs(BITMAP_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Reddit User Agent
-REDDIT_USER_AGENT = "linux:epaper-server:v1.0.0 (by /u/cj)"
-
-# --- Reddit Cache Management ---
-# Global dictionary to store per-device caches: {mac: cache_dict}
-reddit_device_caches = {}
-
-def get_device_cache_path(mac):
-    clean_mac = mac.replace(":", "").lower()
-    return os.path.join(DATA_DIR, f"reddit_cache_{clean_mac}.json")
-
-def load_device_reddit_cache(mac):
-    path = get_device_cache_path(mac)
-    if os.path.exists(path):
-        try:
-            with open(path, "r") as f:
-                cache = json.load(f)
-                if cache.get("last_update"):
-                    cache["last_update"] = datetime.datetime.fromisoformat(cache["last_update"])
-                return cache
-        except Exception as e:
-            print(f"Error loading reddit cache for {mac}: {e}")
-    
-    return {
-        "posts": [],
-        "last_update": None,
-        "config": {"subreddit": "aww"}
-    }
-
-def save_device_reddit_cache(mac, cache):
-    path = get_device_cache_path(mac)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    
-    # Create a copy for JSON serialization
-    serializable = cache.copy()
-    if serializable.get("last_update"):
-        serializable["last_update"] = serializable["last_update"].isoformat()
-    
-    try:
-        with open(path, "w") as f:
-            json.dump(serializable, f)
-    except Exception as e:
-        print(f"Error saving reddit cache for {mac}: {e}")
-
 # --- RSS Cache Management ---
-def get_rss_cache_path(mac):
+def get_rss_cache_path(mac, source_id):
     clean_mac = mac.replace(":", "").lower()
-    return os.path.join(DATA_DIR, f"rss_cache_{clean_mac}.json")
+    return os.path.join(DATA_DIR, f"rss_cache_{clean_mac}_{source_id}.json")
 
-def load_device_rss_cache(mac):
-    path = get_rss_cache_path(mac)
+def load_device_rss_cache(mac, source_id):
+    path = get_rss_cache_path(mac, source_id)
     if os.path.exists(path):
         try:
             with open(path, "r") as f:
                 cache = json.load(f)
                 return cache
         except Exception as e:
-            print(f"Error loading rss cache for {mac}: {e}")
+            print(f"Error loading rss cache for {mac} source {source_id}: {e}")
     
     return {
         "posts": [],
@@ -96,14 +52,14 @@ def load_device_rss_cache(mac):
         "progress": ""
     }
 
-def save_device_rss_cache(mac, cache):
-    path = get_rss_cache_path(mac)
+def save_device_rss_cache(mac, source_id, cache):
+    path = get_rss_cache_path(mac, source_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
         with open(path, "w") as f:
             json.dump(cache, f)
     except Exception as e:
-        print(f"Error saving rss cache for {mac}: {e}")
+        print(f"Error saving rss cache for {mac} source {source_id}: {e}")
 
 # --- App Lifecycle ---
 # Initialize database
@@ -209,26 +165,6 @@ async def login(response: Response, password: str = Body(None), request: Request
     else:
         return RedirectResponse(url="/login?error=1", status_code=303)
 
-async def refresh_device_reddit_cache(mac, db_session=None):
-    """Fetch and dither images for a specific device using the rss_fetcher module."""
-    if db_session is None:
-        db = database.SessionLocal()
-    else:
-        db = db_session
-        
-    try:
-        await rss_fetcher.refresh_device_reddit_cache(
-            mac, 
-            db, 
-            BITMAP_DIR, 
-            load_device_reddit_cache, 
-            save_device_reddit_cache
-        )
-    finally:
-        if db_session is None:
-            db.close()
-
-
 # Dependency to get the database session
 def get_db():
     db = database.SessionLocal()
@@ -238,22 +174,6 @@ def get_db():
         db.close()
 
 # --- Device APIs ---
-
-DEFAULT_REDDIT_CONFIG = {
-    "subreddit": "aww", 
-    "sort": "top", 
-    "time": "day", 
-    "bit_depth": 2,
-    "width": 400,
-    "height": 300,
-    "apply_gamma": True,
-    "clip_pct": 20,
-    "cost_pct": 6,
-    "dither_strength": 1.0,
-    "sharpen_amount": 0.0,
-    "auto_optimize": False,
-    "ai_prompt": ai_optimizer.DEFAULT_SYSTEM_PROMPT
-}
 
 DEFAULT_RSS_CONFIG = {
     "url": "",
@@ -275,18 +195,13 @@ def setup_device(id: str = Header(None), db: Session = Depends(get_db)):
         device = database.Device(
             mac_address=id, 
             api_key=api_key, 
-            friendly_id=friendly_id,
-            reddit_config=DEFAULT_REDDIT_CONFIG
+            friendly_id=friendly_id
         )
         db.add(device)
         db.commit()
         db.refresh(device)
         message = "Device successfully registered"
     else:
-        # Update old devices if they lack reddit_config fields
-        if not device.reddit_config:
-            device.reddit_config = DEFAULT_REDDIT_CONFIG
-            db.commit()
         message = "Device already registered"
 
     return {"status": 200, "api_key": device.api_key, "friendly_id": device.friendly_id, "message": message}
@@ -355,27 +270,32 @@ def get_display(
                 filename = valid_images[idx].filename
                 device.current_image_index = (idx + 1) % len(valid_images)
                 
-        elif current_dish == "reddit":
-            cache = load_device_reddit_cache(id)
-            posts = cache.get("posts", [])
-            # Filter to only posts that actually have files on disk
-            valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
-            
-            if valid_posts:
-                idx = device.current_image_index % len(valid_posts)
-                filename = valid_posts[idx].get("filename")
-                device.current_image_index = (idx + 1) % len(valid_posts)
+        elif current_dish.startswith("rss_"):
+            try:
+                source_id = int(current_dish.split("_")[1])
+                cache = load_device_rss_cache(id, source_id)
+                posts = cache.get("posts", [])
+                # Filter to only posts that actually have files on disk
+                valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
                 
-        elif current_dish == "rss":
-            cache = load_device_rss_cache(id)
-            posts = cache.get("posts", [])
-            # Filter to only posts that actually have files on disk
-            valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
-            
-            if valid_posts:
-                idx = device.current_image_index % len(valid_posts)
-                filename = valid_posts[idx].get("filename")
-                device.current_image_index = (idx + 1) % len(valid_posts)
+                if valid_posts:
+                    idx = device.current_image_index % len(valid_posts)
+                    filename = valid_posts[idx].get("filename")
+                    device.current_image_index = (idx + 1) % len(valid_posts)
+            except (ValueError, IndexError):
+                print(f"Error parsing source_id from {current_dish}")
+                
+        elif current_dish == "rss": # Legacy support for old enabled_dishes
+            # Find the first available RSS source
+            if device.rss_sources:
+                source = device.rss_sources[0]
+                cache = load_device_rss_cache(id, source.id)
+                posts = cache.get("posts", [])
+                valid_posts = [p for p in posts if p.get("filename") and os.path.exists(os.path.join(BITMAP_DIR, p["filename"]))]
+                if valid_posts:
+                    idx = device.current_image_index % len(valid_posts)
+                    filename = valid_posts[idx].get("filename")
+                    device.current_image_index = (idx + 1) % len(valid_posts)
 
         if filename:
             # Store the served filename for the active badge
@@ -460,45 +380,28 @@ def list_devices(db: Session = Depends(get_db)):
     devices = db.query(database.Device).all()
     result = []
     for d in devices:
-        # Ensure reddit_config has all fields and a prompt
-        config = d.reddit_config or DEFAULT_REDDIT_CONFIG.copy()
-        needs_commit = False
-        
-        if not config.get("ai_prompt"):
-            config["ai_prompt"] = ai_optimizer.DEFAULT_SYSTEM_PROMPT
-            d.reddit_config = config
-            needs_commit = True
-        
-        if needs_commit:
-            db.commit()
-            
-        # Calculate current local time for the device
-        device_time = "Unknown"
-        try:
-            tz = pytz.timezone(d.timezone or "UTC")
-            device_time = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception as e:
-            print(f"Error calculating time for TZ {d.timezone}: {e}")
-
-        result.append({
+        # Include RSS sources in result
+        device_dict = {
             "mac_address": d.mac_address,
             "friendly_id": d.friendly_id,
             "battery_voltage": d.battery_voltage,
+            "fw_version": d.fw_version,
             "rssi": d.rssi,
+            "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
+            "next_expected_update": d.next_expected_update.isoformat() if d.next_expected_update else None,
             "refresh_rate": d.refresh_rate,
+            "timezone": d.timezone,
             "display_width": d.display_width,
             "display_height": d.display_height,
-            "timezone": d.timezone,
-            "device_time": device_time,
             "active_dish": d.active_dish,
-            "enabled_dishes": d.enabled_dishes or ["gallery"],
-            "display_mode": d.display_mode or "sequence",
-            "reddit_config": config,
-            "rss_config": d.rss_config or DEFAULT_RSS_CONFIG.copy(),
-            "current_image": d.last_served_image,
-            "last_update_time": d.last_update_time.isoformat() if d.last_update_time else None,
-            "images": [{"id": i.id, "filename": i.filename, "original_name": i.original_name} for i in d.images]
-        })
+            "enabled_dishes": d.enabled_dishes,
+            "display_mode": d.display_mode,
+            "last_served_image": d.last_served_image,
+            "images": [{"id": i.id, "filename": i.filename, "original_name": i.original_name} for i in d.images],
+            "rss_sources": [{"id": s.id, "url": s.url, "name": s.name, "config": s.config} for s in d.rss_sources]
+        }
+        result.append(device_dict)
+    
     return result
 
 @app.post("/admin/device/{mac}/settings")
@@ -516,62 +419,87 @@ def update_device_settings(mac: str, settings: dict = Body(...), db: Session = D
         device.timezone = settings["timezone"]
     if "active_dish" in settings:
         device.active_dish = settings["active_dish"]
+        # Sync last_dish_index if the active dish is in the enabled list
+        if device.enabled_dishes and device.active_dish in device.enabled_dishes:
+            try:
+                device.last_dish_index = device.enabled_dishes.index(device.active_dish)
+            except ValueError:
+                pass
     if "enabled_dishes" in settings:
         device.enabled_dishes = settings["enabled_dishes"]
     if "display_mode" in settings:
         device.display_mode = settings["display_mode"]
-    if "reddit_config" in settings:
-        device.reddit_config = settings["reddit_config"]
-    if "rss_config" in settings:
-        device.rss_config = settings["rss_config"]
     
     db.commit()
     return {"status": "success"}
 
-@app.get("/admin/reddit/preview/{mac}")
-def reddit_preview(mac: str, db: Session = Depends(get_db)):
-    cache = load_device_reddit_cache(mac)
-    
-    now = datetime.datetime.now()
-    try:
-        import time
-        server_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
-    except:
-        server_tz = "Local"
-
-    # Get device rate from database if available, or default to 3
-    rate_hours = 3
+@app.post("/admin/rss/add/{mac}")
+async def add_rss_source(mac: str, data: dict = Body(...), db: Session = Depends(get_db)):
     device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
+    if not device: raise HTTPException(status_code=404, detail="Device not found")
     
-    return {
-        "posts": cache["posts"],
-        "status": cache.get("status", "idle"),
-        "progress": cache.get("progress", ""),
-        "last_update": cache["last_update"].isoformat() if cache["last_update"] else None,
-        "last_update_formatted": cache["last_update"].strftime("%Y-%m-%d %H:%M:%S") if cache["last_update"] else "Never",
-        "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
-        "server_tz": server_tz,
-        "rate_hours": rate_hours,
-        "config": cache.get("config", {})
-    }
+    if len(device.rss_sources) >= 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 RSS sources allowed")
+    
+    url = data.get("url")
+    if not url: raise HTTPException(status_code=400, detail="URL is required")
+    
+    # Simple name from URL if not provided
+    name = data.get("name") or urlparse(url).netloc or "RSS Feed"
+    
+    # Check if exists
+    source = db.query(database.RssSource).filter(database.RssSource.mac_address == mac, database.RssSource.url == url).first()
+    if not source:
+        source = database.RssSource(mac_address=mac, url=url, name=name, config=data.get("config", {}))
+        db.add(source)
+    else:
+        source.name = name
+        source.config = data.get("config", {})
+    
+    db.commit()
+    db.refresh(source)
+    
+    # Trigger fetch
+    asyncio.create_task(refresh_device_rss_cache(mac, source.id))
+    
+    return {"status": "success", "source_id": source.id}
 
-@app.post("/admin/reddit/fetch_now/{mac}")
-async def fetch_reddit_now(mac: str, db: Session = Depends(get_db)):
-    """Manually trigger a Reddit cache refresh for a specific device."""
+@app.post("/admin/rss/delete/{mac}/{source_id}")
+def delete_rss_source(mac: str, source_id: int, db: Session = Depends(get_db)):
     device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-        
-    print(f"DEBUG: Manual fetch triggered for {mac}")
+    if not device: raise HTTPException(status_code=404, detail="Device not found")
     
-    # Start the fetch in the background
-    asyncio.create_task(refresh_device_reddit_cache(mac))
+    source = db.query(database.RssSource).filter(database.RssSource.id == source_id, database.RssSource.mac_address == mac).first()
+    if not source: raise HTTPException(status_code=404, detail="Source not found")
     
-    return {"status": "fetch_started"}
+    # Delete cache file
+    cache_path = get_rss_cache_path(mac, source_id)
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
+    
+    # Delete images associated with this source (from disk)
+    # We should probably track which images belong to which source in the DB, 
+    # but for now RSS images are just in BITMAP_DIR with rss_ prefix.
+    # The cache file has the filenames.
+    cache = load_device_rss_cache(mac, source_id)
+    for post in cache.get("posts", []):
+        if post.get("filename"):
+            path = os.path.join(BITMAP_DIR, post["filename"])
+            if os.path.exists(path):
+                os.remove(path)
 
-@app.get("/admin/rss/preview/{mac}")
-def rss_preview(mac: str):
-    cache = load_device_rss_cache(mac)
+    # Remove from enabled_dishes if present
+    if device.enabled_dishes and f"rss_{source_id}" in device.enabled_dishes:
+        new_dishes = [d for d in device.enabled_dishes if d != f"rss_{source_id}"]
+        device.enabled_dishes = new_dishes
+    
+    db.delete(source)
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/admin/rss/preview/{mac}/{source_id}")
+def rss_preview(mac: str, source_id: int):
+    cache = load_device_rss_cache(mac, source_id)
     return {
         "posts": cache.get("posts", []),
         "status": cache.get("status", "idle"),
@@ -579,27 +507,33 @@ def rss_preview(mac: str):
         "last_refresh": cache.get("last_refresh")
     }
 
-@app.post("/admin/rss/fetch_now/{mac}")
-async def fetch_rss_now_device(mac: str, db: Session = Depends(get_db)):
-    """Trigger a full RSS refresh (fetching images and processing) for a device."""
-    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-        
-    asyncio.create_task(rss_general_fetcher.refresh_device_rss_cache(
-        mac, db, BITMAP_DIR, load_device_rss_cache, save_device_rss_cache
-    ))
+@app.post("/admin/rss/fetch_now/{mac}/{source_id}")
+async def fetch_rss_now_device(mac: str, source_id: int, db: Session = Depends(get_db)):
+    """Trigger a full RSS refresh for a specific source."""
+    source = db.query(database.RssSource).filter(database.RssSource.id == source_id, database.RssSource.mac_address == mac).first()
+    if not source: raise HTTPException(status_code=404, detail="Source not found")
+    
+    asyncio.create_task(refresh_device_rss_cache(mac, source.id))
     return {"status": "fetch_started"}
 
-@app.post("/admin/rss/fetch_now")
-async def fetch_rss_now_general(data: dict = Body(...)):
-    """Fetch and parse a general RSS feed (preview only)."""
-    url = data.get("url")
-    if not url:
-        raise HTTPException(status_code=400, detail="URL is required")
-    
-    items = await rss_general_fetcher.fetch_general_rss(url)
-    return {"status": "success", "items": items}
+async def refresh_device_rss_cache(mac: str, source_id: int):
+    """Background task to refresh RSS for a device source."""
+    # We need a new DB session for background task
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        source = db.query(database.RssSource).filter(database.RssSource.id == source_id).first()
+        if not source: return
+        
+        await rss_general_fetcher.refresh_device_rss_cache(
+            mac, source, BITMAP_DIR, load_device_rss_cache, save_device_rss_cache
+        )
+        
+        source.last_fetch = datetime.datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
 
 @app.post("/admin/upload/{mac}")
 async def upload_image(mac: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -639,37 +573,7 @@ def delete_image(image_id: int, db: Session = Depends(get_db)):
         db.commit()
     return {"status": "success"}
 
-@app.delete("/admin/reddit/cache/{mac}")
-def clear_reddit_cache(mac: str):
-    """Clear Reddit cache and delete all associated images."""
-    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
-    
-    # Delete files by pattern: reddit_source2_mac_counter_hash.png
-    for f in os.listdir(BITMAP_DIR):
-        if f.startswith("reddit_") and f"_{clean_mac}_" in f:
-            try: os.remove(os.path.join(BITMAP_DIR, f))
-            except: pass
-    
-    # Save empty cache
-    new_cache = {"posts": [], "status": "idle", "progress": "Cache cleared", "last_update": None}
-    save_device_reddit_cache(mac, new_cache)
-    return {"status": "success"}
-
-@app.delete("/admin/rss/cache/{mac}")
-def clear_rss_cache(mac: str):
-    """Clear RSS cache and delete all associated images."""
-    clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
-    
-    # Delete files by pattern: rss_source2_mac_counter_hash.png
-    for f in os.listdir(BITMAP_DIR):
-        if f.startswith("rss_") and f"_{clean_mac}_" in f:
-            try: os.remove(os.path.join(BITMAP_DIR, f))
-            except: pass
-    
-    # Save empty cache
-    new_cache = {"posts": [], "status": "idle", "progress": "Cache cleared", "last_refresh": None}
-    save_device_rss_cache(mac, new_cache)
-    return {"status": "success"}
+# --- Device Display API ---
 
 if __name__ == "__main__":
     import uvicorn

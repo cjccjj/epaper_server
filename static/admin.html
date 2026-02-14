@@ -65,9 +65,10 @@
 
         .device-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
         
-        .gallery { display: flex; flex-wrap: wrap; gap: 6px; }
-        .image-item { position: relative; width: 200px; height: 150px; background: #000; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; }
-        .image-item img { width: 100%; height: 100%; object-fit: cover; }
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+        .image-item { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; transition: 0.2s; }
+        .image-item:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .image-item img { width: 100%; height: 100%; object-fit: contain; }
         .image-item .delete-btn { position: absolute; top: 0; right: 0; background: rgba(239, 68, 68, 0.9); color: white; border: none; padding: 0 3px; font-size: 9px; cursor: pointer; z-index: 10; }
         .image-item .active-badge { position: absolute; bottom: 0; left: 0; background: #10b981; color: white; font-size: 8px; padding: 1px 4px; font-weight: bold; }
         
@@ -88,9 +89,9 @@
         .config-group .val { min-width: 35px; text-align: right; color: var(--primary); font-weight: bold; font-size: 11px; }
         
         /* Preview Grid Redesign */
-        .reddit-preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
-        .reddit-post { background: var(--panel-light); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); cursor: pointer; transition: 0.2s; position: relative; padding: 0; }
-        .reddit-post:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .preview-list { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+        .preview-post { background: var(--panel-light); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); cursor: pointer; transition: 0.2s; position: relative; padding: 0; }
+        .preview-post:hover { border-color: var(--primary); transform: translateY(-2px); }
         
         .post-img-container { position: relative; width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: #222; }
         .post-img-orig { height: 120px; width: 100%; object-fit: contain; border: 1px solid #444; }
@@ -105,9 +106,9 @@
         .ai-debug { font-size: 9px; color: #818cf8; font-family: monospace; line-height: 1.2; word-break: break-all; margin-bottom: 2px; }
         .process-debug { font-size: 9px; color: #10b981; font-family: monospace; line-height: 1.2; word-break: break-all; }
         .text-red { color: #ef4444 !important; font-weight: bold; }
-        .reddit-post.skipped { border-color: rgba(239, 68, 68, 0.4); opacity: 0.8; }
-        .reddit-post.error { border-color: #ef4444; border-width: 2px; }
-        .reddit-post.error .process-debug { color: #ef4444; font-weight: bold; }
+        .preview-post.skipped { border-color: rgba(239, 68, 68, 0.4); opacity: 0.8; }
+        .preview-post.error { border-color: #ef4444; border-width: 2px; }
+        .preview-post.error .process-debug { color: #ef4444; font-weight: bold; }
 
         .previews-container { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         .preview-box { display: flex; flex-direction: column; gap: 4px; }
@@ -137,8 +138,9 @@
         .dish-toggle-group { display: flex; gap: 4px; background: var(--input-bg); padding: 3px; border-radius: 6px; border: 1px solid var(--border); }
         .dish-btn { background: transparent; border: none; color: var(--text-dim); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; }
         .dish-btn:hover { color: var(--text); background: var(--panel-light); }
-        .dish-btn.active-dish { background: #10b981; color: white; font-weight: bold; position: relative; }
-        .dish-btn.active-dish::after { content: "ACTIVE"; position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; font-size: 7px; padding: 1px 3px; border-radius: 3px; border: 1px solid var(--bg); }
+        .dish-btn.enabled-dish { background: var(--panel-light); color: var(--text); border: 1px solid var(--primary); }
+        .dish-btn.active-dish { background: #10b981; color: white; font-weight: bold; position: relative; border-color: #10b981; }
+        .dish-btn.active-dish::after { content: "ACTIVE"; position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; font-size: 7px; padding: 1px 3px; border-radius: 3px; border: 1px solid var(--bg); z-index: 20; }
 
         /* Tabs System */
         .tab-bar { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
@@ -174,7 +176,7 @@
         <!-- Section 1: Device Configuration -->
         <div class="device-info">
             <div class="device-header">
-                <h3 x-text="deviceSettings.name || 'Device'">Device</h3>
+                <h3 x-text="deviceSettings.friendly_id || 'Device'">Device</h3>
                 <div class="refresh-rate-box">
                     <label>Refresh:</label>
                     <input type="number" x-model="deviceSettings.refresh_rate" @change="saveDeviceSettings" min="10" style="width: 85px;">
@@ -210,9 +212,15 @@
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <label>Sources:</label>
                     <div class="dish-toggle-group">
-                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('gallery') }" @click="toggleDish('gallery')">🖼️ Gallery</button>
-                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('reddit') }" @click="toggleDish('reddit')">Reddit</button>
-                        <button class="dish-btn" :class="{ 'active-dish': deviceSettings.enabled_dishes.includes('rss') }" @click="toggleDish('rss')">📰 RSS</button>
+                        <button class="dish-btn" 
+                                :class="{ 'enabled-dish': deviceSettings.enabled_dishes.includes('gallery'), 'active-dish': deviceSettings.active_dish === 'gallery' }" 
+                                @click="toggleDish('gallery')">🖼️ Gallery</button>
+                        <template x-for="source in rssSources" :key="source.id">
+                            <button class="dish-btn" 
+                                    :class="{ 'enabled-dish': deviceSettings.enabled_dishes.includes('rss_' + source.id), 'active-dish': deviceSettings.active_dish === 'rss_' + source.id }" 
+                                    @click="toggleDish('rss_' + source.id)"
+                                    x-text="'📰 ' + (source.name || 'RSS')"></button>
+                        </template>
                     </div>
                 </div>
                 
@@ -230,35 +238,54 @@
         <!-- Section 2: Tabbed Source Configuration -->
         <div class="tab-bar">
             <button class="tab-btn" :class="{ active: currentTab === 'gallery' }" @click="showTab('gallery')">🖼️ Gallery</button>
-            <button class="tab-btn" :class="{ active: currentTab === 'reddit' }" @click="showTab('reddit')">Reddit</button>
             <button class="tab-btn" :class="{ active: currentTab === 'rss' }" @click="showTab('rss')">📰 RSS</button>
         </div>
 
         <!-- RSS Source Panel -->
         <div x-show="currentTab === 'rss'" class="tab-content">
+            <!-- RSS Source Selector -->
+            <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <template x-for="source in rssSources" :key="source.id">
+                    <div style="display: flex; align-items: center; background: var(--panel-light); border-radius: 4px; border: 1px solid var(--border); overflow: hidden;"
+                         :style="currentRssSourceId === source.id ? 'border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary);' : ''">
+                        <button class="segment-btn" 
+                                style="padding: 6px 12px; border: none; border-radius: 0;"
+                                :class="{ active: currentRssSourceId === source.id }" 
+                                @click="selectRssSource(source.id)"
+                                x-text="source.name || 'RSS'"></button>
+                        <button @click.stop="deleteRssSource(source.id)" 
+                                style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: none; border-left: 1px solid var(--border); padding: 6px 8px; cursor: pointer;">✕</button>
+                    </div>
+                </template>
+                <button x-show="rssSources.length < 5" @click="currentRssSourceId = null; rssConfig = { url: '', name: '', bit_depth: 2, auto_optimize: true, show_title: true, gamma_index: 0, sharpen_amount: 0.1, dither_strength: 1.0, clip_percent: 22, cost_percent: 6, ai_prompt: '' }"
+                        class="btn-add" style="padding: 4px 10px; font-size: 11px;">+ New Source</button>
+            </div>
+
             <div class="config-container">
                 <div class="config-main">
                     <div class="config-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-                        <div class="config-group">
+                        <div class="config-group" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                            <label>Source Name</label>
+                            <input type="text" x-model="rssConfig.name" placeholder="Optional Name" style="width: 100%;">
+                        </div>
+                        <div class="config-group" style="flex-direction: column; align-items: flex-start; gap: 4px; flex: 2;">
                             <label>RSS URL</label>
-                            <input type="text" x-model="rssConfig.url" placeholder="https://..." style="flex: 1;">
-                            <button class="btn-fetch" @click="fetchRssNow()" :disabled="isFetchingRss" style="height: 28px; padding: 0 12px;">
-                                <span x-text="isFetchingRss ? '⏳' : '⚡ Fetch'"></span>
-                            </button>
-                            <span class="stats" x-html="rssStatus" style="margin-left: 8px; font-size: 11px;">Ready</span>
+                            <div style="display: flex; width: 100%; gap: 8px;">
+                                <input type="text" x-model="rssConfig.url" placeholder="https://..." style="flex: 1;">
+                                <button class="btn-fetch" @click="fetchRssNow()" :disabled="isFetchingRss" style="height: 28px; padding: 0 12px;">
+                                    <span x-text="isFetchingRss ? '⏳' : '⚡ Fetch & Save'"></span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="config-row">
-                        <div class="config-group">
-                            <input type="checkbox" id="rssAutoOpt" x-model="rssConfig.auto_optimize" @change="saveRssConfig()">
-                            <label for="rssAutoOpt" style="cursor: pointer; min-width: auto;">✨ AI Optimize</label>
-                        </div>
-                        <div class="config-group" :class="{ disabled: rssConfig.auto_optimize }">
-                            <input type="checkbox" id="rssShowTitle" x-model="rssConfig.show_title" @change="saveRssConfig()">
-                            <label for="rssShowTitle" style="cursor: pointer; min-width: auto;">📝 Show Title</label>
-                        </div>
-                    </div>
+    <div class="config-group">
+        <input type="checkbox" id="rssAutoOpt" x-model="rssConfig.auto_optimize" @change="saveRssConfig()">
+        <label for="rssAutoOpt" style="cursor: pointer; min-width: auto;">✨ AI Optimize</label>
+    </div>
+    <span class="stats" x-html="rssStatus" style="margin-left: auto; font-size: 11px;">Ready</span>
+</div>
 
                     <div class="config-row">
                         <div class="config-group" :class="{ disabled: rssConfig.auto_optimize }">
@@ -308,24 +335,26 @@
                 </div>
             </div>
 
-            <div class="reddit-preview-list">
-                <template x-for="item in rssPreview" :key="item.post_url">
-                    <div class="reddit-post" :class="{ 'skipped': item.status === 'skip', 'error': item.status === 'error' }">
-                        <div class="post-img-container">
-                            <a :href="item.post_url" target="_blank" style="display: block;">
-                                <img :src="item.img_url" class="post-img-orig" title="Click to view original">
-                            </a>
+            <div class="preview-list" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
+                <template x-for="item in rssPreview" :key="item.id || item.post_url">
+                    <div class="preview-post" :class="{ 'skipped': item.status === 'skip', 'error': item.status === 'error' }" style="padding: 0; background: var(--panel);">
+                        <div class="post-img-container" style="padding: 0; background: #000;">
                             <template x-if="item.filename">
-                                <img :src="'/api/bitmap/' + item.filename" class="post-img-proc" @click="showOverlay('/api/bitmap/' + item.filename)" style="cursor: zoom-in;" title="Click to zoom processed">
+                                <img :src="'/api/bitmap/' + item.filename" class="post-img-proc" @click="showOverlay('/api/bitmap/' + item.filename)" 
+                                     style="cursor: zoom-in; height: 180px; width: 100%; object-fit: contain;" title="Click to zoom processed">
+                            </template>
+                            <template x-if="!item.filename && item.img_url">
+                                <img :src="item.img_url" class="post-img-orig" style="height: 180px; width: 100%; object-fit: contain; opacity: 0.5;">
                             </template>
                         </div>
-                        <div class="post-content">
-                            <div class="post-title" x-text="item.title"></div>
-                            <div class="post-body" x-text="item.body || ''"></div>
-                            <a :href="item.post_url" target="_blank" class="post-url" x-text="item.post_url"></a>
-                            <div class="post-debug">
-                                <div class="ai-debug" x-text="item.debug_ai || 'No AI info'"></div>
-                                <div class="process-debug" x-text="item.debug_code || 'No code info'"></div>
+                        <div class="post-content" style="padding: 8px;">
+                            <div class="post-title" x-text="item.title" style="height: 2.8em; margin-bottom: 4px;"></div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                                <div class="post-debug" style="margin: 0; border: none; padding: 0;">
+                                    <div class="ai-debug" x-text="item.debug_ai || ''"></div>
+                                    <div class="process-debug" x-text="item.debug_code || ''"></div>
+                                </div>
+                                <a :href="item.post_url" target="_blank" class="post-url" style="color: var(--primary); font-size: 14px;">🔗</a>
                             </div>
                         </div>
                     </div>
@@ -411,7 +440,7 @@
                     <div class="image-item" @click="showOverlay('/api/bitmap/' + item.filename)">
                         <img :src="'/api/bitmap/' + item.filename">
                         <button class="delete-btn" @click.stop="deleteImage(item.id)">×</button>
-                        <template x-if="item.filename === deviceSettings.current_image">
+                        <template x-if="item.filename === deviceSettings.last_served_image">
                             <div class="active-badge">ACTIVE</div>
                         </template>
                     </div>
@@ -419,114 +448,6 @@
             </div>
         </div>
 
-        <!-- Reddit Source Panel -->
-        <div x-show="currentTab === 'reddit'" class="tab-content">
-            <div class="config-container">
-                <div class="config-main">
-                    <div class="config-row" style="border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-                        <div class="config-group">
-                            <label>Subreddit</label>
-                            <div style="display: flex; gap: 4px; flex: 1;">
-                                <select x-model="redditConfig.subreddit" style="width: 100px;">
-                                    <option value="aww">r/aww</option>
-                                    <option value="EarthPorn">r/EarthPorn</option>
-                                    <option value="Art">r/Art</option>
-                                    <option value="memes">r/memes</option>
-                                    <option value="dankmemes">r/dankmemes</option>
-                                    <option value="OldSchoolCool">r/OldSchoolCool</option>
-                                </select>
-                                <input type="text" x-model="redditConfig.subreddit" placeholder="custom..." style="flex: 1;">
-                            </div>
-                            <button class="btn-fetch" @click="fetchRedditNow()" :disabled="isFetchingReddit" style="height: 28px; padding: 0 12px;">
-                                <span x-text="isFetchingReddit ? '⏳' : '⚡ Fetch'"></span>
-                            </button>
-                            <span class="stats" x-html="redditStatus" style="margin-left: 8px; font-size: 11px;">Ready</span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group">
-                            <input type="checkbox" id="redditAutoOpt" x-model="redditConfig.auto_optimize" @change="saveRedditConfig()">
-                            <label for="redditAutoOpt" style="cursor: pointer; min-width: auto;">✨ AI Optimize</label>
-                        </div>
-                        <div class="config-group" :class="{ disabled: redditConfig.auto_optimize }">
-                            <input type="checkbox" id="redditShowTitle" x-model="redditConfig.show_title" @change="saveRedditConfig()">
-                            <label for="redditShowTitle" style="cursor: pointer; min-width: auto;">📝 Show Title</label>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group" :class="{ disabled: redditConfig.auto_optimize }">
-                            <label>Gamma</label>
-                            <input type="range" x-model="redditConfig.gamma_index" min="0" max="7" @change="saveRedditConfig()">
-                            <span class="val" x-text="gammaLabels[redditConfig.gamma_index].toFixed(1)"></span>
-                        </div>
-                        <div class="config-group" :class="{ disabled: redditConfig.auto_optimize }">
-                            <label>Sharp</label>
-                            <input type="range" x-model="redditConfig.sharpen_amount" min="0" max="2" step="0.1" @change="saveRedditConfig()">
-                            <span class="val" x-text="redditConfig.sharpen_amount"></span>
-                        </div>
-                    </div>
-
-                    <div class="config-row">
-                        <div class="config-group" :class="{ disabled: redditConfig.auto_optimize }">
-                            <label>Dither %</label>
-                            <input type="range" x-model="redditConfig.dither_strength" min="0" max="1" step="0.01" @change="saveRedditConfig()">
-                            <span class="val" x-text="Math.round(redditConfig.dither_strength * 100)"></span>
-                        </div>
-                        <div class="config-group">
-                            <label>Bit Depth</label>
-                            <div class="segmented-control">
-                                <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 1 }" @click="redditConfig.bit_depth = 1; saveRedditConfig()">1bit</button>
-                                <button class="segment-btn" :class="{ active: redditConfig.bit_depth === 2 }" @click="redditConfig.bit_depth = 2; saveRedditConfig()">2bit</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="config-row" :class="{ disabled: redditConfig.auto_optimize }">
-                        <div class="config-group">
-                            <label>Clip %</label>
-                            <input type="range" x-model="redditConfig.clip_percent" min="0" max="60" @change="saveRedditConfig()">
-                            <span class="val" x-text="redditConfig.clip_percent"></span>
-                        </div>
-                        <div class="config-group">
-                            <label>Cost %</label>
-                            <input type="range" x-model="redditConfig.cost_percent" min="0" max="60" @change="saveRedditConfig()">
-                            <span class="val" x-text="redditConfig.cost_percent"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="config-side" :class="{ disabled: !redditConfig.auto_optimize }">
-                    <label>AI PROMPT</label>
-                    <textarea x-model="redditConfig.ai_prompt" @change="saveRedditConfig()" placeholder="Custom AI instructions..."></textarea>
-                </div>
-            </div>
-
-            <div class="reddit-preview-list">
-                <template x-for="post in redditPreview" :key="post.id || post.url">
-                    <div class="reddit-post" :class="{ 'skipped': post.status === 'skip', 'error': post.status === 'error' }">
-                        <div class="post-img-container">
-                            <a :href="post.url" target="_blank" style="display: block;">
-                                <img :src="post.img_url" class="post-img-orig" title="Click to view original">
-                            </a>
-                            <template x-if="post.filename">
-                                <img :src="'/api/bitmap/' + post.filename" class="post-img-proc" @click="showOverlay('/api/bitmap/' + post.filename)" style="cursor: zoom-in;" title="Click to zoom processed">
-                            </template>
-                        </div>
-                        <div class="post-content">
-                            <div class="post-title" x-text="post.title"></div>
-                            <div class="post-body" x-text="post.body || ''"></div>
-                            <a :href="post.url" target="_blank" class="post-url" x-text="post.url"></a>
-                            <div class="post-debug">
-                                <div class="ai-debug" x-text="post.debug_ai || 'No AI info'"></div>
-                                <div class="process-debug" x-text="post.debug_code || 'No code info'"></div>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-        </div>
     </div>
 
     <div id="overlay" @click="$el.style.display='none'"><img id="overlayImg"></div>

@@ -42,7 +42,10 @@ async def fetch_general_rss(url: str) -> List[Dict]:
     feed = feedparser.parse(xml_data)
     items = []
 
-    for entry in feed.entries:
+    for i, entry in enumerate(feed.entries):
+        # 0. ID
+        post_id = entry.get("id", entry.get("guid", f"gen_{i}"))
+        
         # 1. Title
         title = entry.get("title", "No Title")
 
@@ -94,9 +97,10 @@ async def fetch_general_rss(url: str) -> List[Dict]:
         date = entry.get("published", entry.get("pubDate", entry.get("updated", "")))
 
         items.append({
+            "id": post_id,
             "title": title,
             "img_url": img_url,
-            "body": body_text,
+            "body_text": body_text,
             "post_url": post_url,
             "date": date,
             "status": "ok" if img_url else "no_image"
@@ -104,75 +108,66 @@ async def fetch_general_rss(url: str) -> List[Dict]:
 
     return items
 
-async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_func, save_cache_func):
+async def refresh_device_rss_cache(mac, source, bitmap_dir, load_cache, save_cache):
     """
-    Refreshes the General RSS image cache for a specific device.
-    Similar to Reddit but for any RSS feed.
+    Full RSS refresh for a specific device source: fetch feed, fetch images, process, and update cache.
+    'source' is an RssSource database object.
     """
-    import database
-    
-    device = db.query(database.Device).filter(database.Device.mac_address == mac).first()
-    if not device:
-        print(f"ERROR: Device {mac} not found for RSS refresh")
-        return
-        
-    config = device.rss_config or {}
-    rss_url = config.get("url")
-    if not rss_url:
-        print(f"ERROR: No RSS URL configured for {mac}")
-        return
+    rss_url = source.url
+    config = source.config
+    source_id = source.id
 
+    # Manual settings overrides if auto_optimize is False
     bit_depth = int(config.get("bit_depth", 1))
-    width = device.display_width or 400
-    height = device.display_height or 300
+    width = 400 # Default to 400x300 for RSS
+    height = 300
     auto_optimize = config.get("auto_optimize", False)
     ai_prompt = config.get("ai_prompt")
     
-    # Manual settings overrides if auto_optimize is False
     clip_pct = int(config.get("clip_percent", 22 if bit_depth == 1 else 20))
     cost_pct = int(config.get("cost_percent", 6))
     
     gamma_labels = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
-    # Default to gamma 1.2 (index 1) when auto_optimize is False
     gamma_index = int(config.get("gamma_index", 1)) 
     if gamma_index < 0 or gamma_index >= len(gamma_labels):
         gamma_index = 1
     manual_gamma = gamma_labels[gamma_index]
     
     dither_strength = float(config.get("dither_strength", 1.0))
-    sharpen_amount = float(config.get("sharpen_amount", 0.2)) # Default sharpen to 0.2
+    sharpen_amount = float(config.get("sharpen_amount", 0.2))
 
     print(f"\n[RSS FETCH] Starting for {mac} URL: {rss_url}")
     print(f"  Options: auto_opt={auto_optimize}, gamma={manual_gamma}, dither={dither_strength}")
     
-    cache = load_cache_func(mac)
+    cache = load_cache(mac, source_id)
     cache["status"] = "fetching"
     cache["progress"] = "Fetching RSS feed..."
-    save_cache_func(mac, cache)
+    save_cache(mac, source_id, cache)
     
     # 1. Clear old files
     clean_mac = re.sub(r'[^a-zA-Z0-9]', '', mac).lower()
     rss_domain = urlparse(rss_url).netloc.replace("www.", "")
     rss_source2 = re.sub(r'[^a-zA-Z0-9]', '', rss_domain).lower() or "rss"
-    prefix = f"rss_{rss_source2}_{clean_mac}_"
+    # Include source_id in prefix to avoid collisions between multiple feeds from the same domain
+    prefix = f"rss_{rss_source2}_{source_id}_{clean_mac}_"
     
-    for f in os.listdir(BITMAP_DIR):
+    for f in os.listdir(bitmap_dir):
         if f.startswith(prefix):
             try:
-                os.remove(os.path.join(BITMAP_DIR, f))
+                os.remove(os.path.join(bitmap_dir, f))
             except:
                 pass
     
     # 2. Reset cache
     cache["posts"] = []
-    save_cache_func(mac, cache)
+    save_cache(mac, source_id, cache)
 
     # 3. Fetch items
     items = await fetch_general_rss(rss_url)
     if not items:
         cache["status"] = "error"
         cache["progress"] = "Failed to fetch or parse RSS feed"
-        save_cache_func(mac, cache)
+        save_cache(mac, source_id, cache)
         return
 
     all_processed = []
@@ -186,7 +181,7 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
             continue
 
         cache["progress"] = f"Processing item {i+1}/{len(items)}"
-        save_cache_func(mac, cache)
+        save_cache(mac, source_id, cache)
 
         try:
             print(f"      Processing item: {item['title'][:50]}...")
@@ -268,9 +263,9 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
             # Generate structured filename
             img_bytes = await asyncio.to_thread(image_processor.get_image_bytes, processed_img, bit_depth=bit_depth)
             filename = image_processor.generate_processed_filename(
-                "rss", rss_source2, mac, filename_counter, img_bytes
+                "rss", f"{rss_source2}_{source_id}", mac, filename_counter, img_bytes
             )
-            filepath = os.path.join(BITMAP_DIR, filename)
+            filepath = os.path.join(bitmap_dir, filename)
 
             # Save
             await asyncio.to_thread(image_processor.save_as_png, processed_img, filepath, bit_depth=bit_depth)
@@ -291,10 +286,10 @@ async def refresh_device_rss_cache(mac: str, db, BITMAP_DIR: str, load_cache_fun
 
         # Incremental save
         cache["posts"] = all_processed
-        save_cache_func(mac, cache)
+        save_cache(mac, source_id, cache)
 
     cache["status"] = "idle"
     cache["progress"] = "Complete"
     cache["last_refresh"] = datetime.datetime.now().isoformat()
-    save_cache_func(mac, cache)
+    save_cache(mac, source_id, cache)
     print(f"[RSS FETCH] Done for {mac}. Processed {filename_counter} images.")

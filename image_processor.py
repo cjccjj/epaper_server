@@ -14,7 +14,7 @@ OVERLAY_FONT_SIZE = 14  # Default font size for title overlay
 def generate_processed_filename(source1, source2, mac, counter, img_data=None):
     """
     Generate a filename in the format: source1_source2_mac_counter_hash.png
-    - source1: e.g. 'gallery', 'reddit', 'rss'
+    - source1: e.g. 'gallery', 'rss'
     - source2: e.g. 'gallery', 'aww', 'cnn.com'
     - mac: mac address (will be cleaned)
     - counter: integer or string, will be formatted to 4 digits
@@ -41,7 +41,7 @@ def generate_processed_filename(source1, source2, mac, counter, img_data=None):
 
 def download_image_simple(url):
     """Download image from URL and return as PIL Image object."""
-    headers = {"User-Agent": "linux:epaper-server:v1.0.0 (by /u/cj)"}
+    headers = {"User-Agent": "linux:epaper-server:v1.0.0"}
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
